@@ -1,35 +1,46 @@
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+# __init__.py
+from mistralai import Mistral
+import os
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.const import Platform
+import logging
+import asyncio
+from .const import DOMAIN
 
-DOMAIN = "homestral"
+_LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = vol.Schema({
-    DOMAIN: vol.Schema({
-        vol.Required('api_key'): cv.string,
-    })
-}, extra=vol.ALLOW_EXTRA)
 
-def setup(hass, config):
-    """Your controller/hub setup code."""
-    api_key = config[DOMAIN]['api_key']
-    client = MistralClient(api_key=api_key)
 
-    def handle_chat(call):
-        message = call.data.get('message')
-        chat_response = client.chat(
-            messages=[ChatMessage(role="user", content=message)]
-        )
-        return chat_response.choices[0].message.content
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the Homestral component."""
+    _LOGGER.info("Initialisation du plugin Homestral")
 
-    def handle_speech(call):
-        text = call.data.get('text')
-        speech_response = client.text_to_speech(text)
-        return speech_response.content
+    async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+        """Set up the Homestral component."""
+        _LOGGER.info("Initialisation du plugin Homestral")
 
-    hass.services.register(DOMAIN, 'send_message', handle_chat)
-    hass.services.register(DOMAIN, 'speak', handle_speech)
+        # Enregistrer un service pour recharger le plugin
+        async def reload_service(call):
+            """Service to reload the Homestral plugin."""
+            _LOGGER.info("Rechargement du plugin Homestral")
+            # Logique pour recharger le plugin
+            # Par exemple, recharger la configuration ou les données
+            await hass.config_entries.async_reload(entry.entry_id)
+
+        hass.services.async_register(DOMAIN, "reload", reload_service)
+
+        return True
 
     return True
 
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Homestral from a config entry."""
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = entry.data
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    )
+    return True
