@@ -1,8 +1,6 @@
 from homeassistant import config_entries
-from homeassistant.core import callback
 import voluptuous as vol
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.const import Platform
 import logging
 
 _LOGGER = logging.getLogger(__name__)
