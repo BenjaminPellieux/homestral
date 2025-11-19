@@ -6,7 +6,6 @@ from homeassistant.components.conversation import (
 )
 
 
-from markdown import markdown
 from homeassistant.components.conversation.chat_log import AssistantContent
 
 import homeassistant.components.conversation as conversation
@@ -65,32 +64,23 @@ class MistralConversationEntity(
         chat_log,
     ) -> ConversationResult:
         """Process the user input and call the API."""
-        _LOGGER.info(f"\n[DEBUG]\t handle message: {user_input.text=}")
         try:
             response = self._client.chat.complete(
                 model=DEFAULT_CHAT_MODEL,
                 messages=[UserMessage(content=user_input.text)],
             )
-            _LOGGER.info(f"\n[DEBUG]\t handle message: {response=} {type(response.choices[0].message.content)=}")
-             # Créer un objet AssistantContent avec le contenu de la réponse
-            # html_content = markdown(response.choices[0].message.content)
-            assistant_content = AssistantContent(
-                agent_id=self._attr_unique_id, # pyright: ignore[reportArgumentType]
+            chat_log.content.append(AssistantContent(
+                agent_id=self._attr_unique_id,
                 content=response.choices[0].message.content,
-                # content=html_content
-            )
-            # Utiliser async_add_assistant_content_without_tools si la réponse ne contient pas d'appels d'outils
-            #chat_log.async_add_assistant_content_without_tools() 
-            chat_log.content.append(assistant_content)
+            ))
         except Exception as e:
-            _LOGGER.info(f"\n[DEBUG]\t ERROR {e=}")
             _LOGGER.error(f"Error processing conversation: {e}")
-            assistant_content = AssistantContent(
-                agent_id=self._attr_unique_id, # pyright: ignore[reportArgumentType]
-                content=f"Error processing conversation: {e}",
-            )
+            assistant_content = 
             # Utiliser async_add_assistant_content_without_tools si la réponse ne contient pas d'appels d'outils
             #chat_log.async_add_assistant_content_without_tools() 
-            chat_log.content.append(assistant_content)
+            chat_log.content.append(AssistantContent(
+                agent_id=self._attr_unique_id, 
+                content=f"Error processing conversation: {e}",
+            ))
 
         return conversation.async_get_result_from_chat_log(user_input, chat_log)
