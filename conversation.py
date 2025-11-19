@@ -15,6 +15,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.const import MATCH_ALL
 from mistralai import Mistral
 from mistralai.models import UserMessage
+from mistralai.models.toolexecutionentry import ToolExecutionEntry
+from mistralai.models.messageoutputentry import MessageOutputEntry
 from .const import *
 import logging
 
@@ -42,6 +44,7 @@ class MistralConversationEntity(
         self._client = entry.runtime_data
         self._attr_name = "Mistral Conversation"
         self._attr_unique_id = entry.entry_id
+        self._conversation_id = None
 
     @property
     def supported_languages(self):
@@ -65,21 +68,45 @@ class MistralConversationEntity(
     ) -> ConversationResult:
         """Process the user input and call the API."""
         try:
-            response = self._client.chat.complete(
-                model=DEFAULT_CHAT_MODEL,
-                messages=[UserMessage(content=user_input.text)],
-            )
+            # Créer un agent avec un prompt personnalisé
+            # agent = await self._client.beta.agents.create(
+            #     name="Home Assistant Agent",
+            #     instructions="Tu es un assistant domestique intelligent intégré à Home Assistant. Ton rôle est d'aider les utilisateurs à contrôler et surveiller leur maison intelligente.",
+            # )
+            _LOGGER.info(f"\n[DEBUG]: {self._conversation_id=}")
+            if self._conversation_id is None:
+                # Démarrer une nouvelle conversation
+                response = self._client.beta.conversations.start(
+                    agent_id=DEFAULT_AGENT_ID,
+                    inputs=user_input.text,
+                )
+                self._conversation_id = response.conversation_id
+            else:
+                # Continuer une conversation existante
+                response = self._client.beta.conversations.append(
+                    conversation_id=self._conversation_id,
+                    inputs=user_input.text,
+                )
+
+            # Ajouter le contenu de l'assistant au chat_log
+            _LOGGER.info(f"\n[DEBUG]: {response=}")
+            _LOGGER.info(f" \n\n\n\n\n[DEBUG]: {type(response.outputs[0])=}")
+
+            if isinstance(response.outputs[0], ToolExecutionEntry):
+                content = response.outputs[1].content[0].text
+            else:
+                content = response.outputs[0].content 
+
+            _LOGGER.info(f"\n[DEBUG]: {content=}")
+
             chat_log.content.append(AssistantContent(
                 agent_id=self._attr_unique_id,
-                content=response.choices[0].message.content,
+                content=content,
             ))
         except Exception as e:
             _LOGGER.error(f"Error processing conversation: {e}")
-            assistant_content = 
-            # Utiliser async_add_assistant_content_without_tools si la réponse ne contient pas d'appels d'outils
-            #chat_log.async_add_assistant_content_without_tools() 
             chat_log.content.append(AssistantContent(
-                agent_id=self._attr_unique_id, 
+                agent_id=self._attr_unique_id,
                 content=f"Error processing conversation: {e}",
             ))
 
