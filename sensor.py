@@ -1,9 +1,9 @@
-#sensor.py
 from homeassistant.helpers.entity import Entity
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 import logging
-from .const import DOMAIN
+
+from .const import *
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,8 +18,14 @@ class HomestralSensor(Entity):
     def __init__(self, api_key):
         _LOGGER.info(f"HomeStral sensors : {api_key=}")
         self._api_key = api_key
-        self._attr_name = "Homestral Sensor"
-        self._attr_unique_id = "homestral_sensor"
+
+    @property
+    def name(self):
+        return "Homestral Sensor"
+
+    @property
+    def unique_id(self):
+        return "homestral_sensor"
 
     @property
     def device_info(self):
@@ -28,8 +34,3 @@ class HomestralSensor(Entity):
             "name": "Homestral Sensor",
             "manufacturer": "Homestral",
         }
-
-    async def async_update(self):
-        """Update the sensor data."""
-        # Logique pour mettre à jour les données du capteur
-        pass

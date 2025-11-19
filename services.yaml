@@ -1,20 +1,13 @@
-send_message:
-  name: Send message
-  description: Send a message to Mistral chat
+generate_content:
   fields:
-    message:
-      name: Message
-      description: The message to send
+    config_entry:
       required: true
-      example: "Bonjour, comment ça va ?"
-
-speak:
-  name: Speak
-  description: Convert text to speech using Mistral VOXTRAL
-  fields:
-    text:
-      name: Text
-      description: The text to convert to speech
+      selector:
+        config_entry:
+          integration: homestral
+    prompt:
       required: true
-      example: "Bonjour, comment puis-je vous aider ?"
-
+      selector:
+        text:
+          multiline: true
+      example: "Hello, how can I help you?"
