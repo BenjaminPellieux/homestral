@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.const import MATCH_ALL
 from mistralai.models.toolexecutionentry import ToolExecutionEntry
 from mistralai.models.messageoutputentry import MessageOutputEntry
+from mistralai.models import ConversationResponse
 from .const import *
 import logging
 import base64
@@ -94,62 +95,76 @@ class MistralConversationEntity(
             _LOGGER.error(f"Error transcribing audio: {e}")
             return None
 
+    def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
+        
+        # Démarrer une nouvelle conversation
+        if self._entry.data.get(CONF_USE_AGENT, False):
+            # Use agent if specified in configuration
+            _LOGGER.info("Starting new conversation with agent")
+            return  self._client.beta.conversations.start(
+                    agent_id=self._entry.data.get(CONF_AGENT_ID),
+                    inputs=user_input.text,
+            )
+        else:
+            # Use model if no agent specified
+            _LOGGER.info("Starting new conversation with model")
+            return  self._client.beta.conversations.start(
+                model=self._entry.data.get(CONF_MODEL, DEFAULT_CHAT_MODEL),
+                inputs=user_input.text
+            )
+        
+
+    def keep_conversation(self, user_input: ConversationInput) -> ConversationResponse:
+    
+        _LOGGER.info("Continuing conversation with agent")
+        return  self._client.beta.conversations.append(
+                    conversation_id=self._conversation_id,
+                    inputs=user_input.text,
+                )
+
+
+
     async def _async_handle_message(
         self,
         user_input: ConversationInput,
         chat_log,
     ) -> ConversationResult:
         """Process the user input and call the API."""
-        
         _LOGGER.info(f"\n[DEBUG]: {self._conversation_id=}")
-        if self._conversation_id is None:
-            # Démarrer une nouvelle conversation
-            try:
-                response = self._client.beta.conversations.start(
-                    agent_id=DEFAULT_AGENT_ID,
-                    inputs=user_input.text,
-                )
-                self._conversation_id = response.conversation_id
-                _LOGGER.info(f"\n[DEBUG]: {response=}")
-            except Exception as e:
-                _LOGGER.error(f"Error starting new conversation: {e}")
-                await self.async_handle_error(chat_log, f"Error starting new conversation: {e}")
-        else:
-            # Continuer une conversation existante
-            try:
-                response = self._client.beta.conversations.append(
-                    conversation_id=self._conversation_id,
-                    inputs=user_input.text,
-                )
-                _LOGGER.info(f"\n[DEBUG]: {response=}")
-            except Exception as e:
-                _LOGGER.error(f"Error continuing conversation: {e}")
-                self._conversation_id = None
-                await self.async_handle_error(chat_log, f"Error continuing conversation: {e}")
-
-        # Ajouter le contenu de l'assistant au chat_log
-        
-        _LOGGER.info(f" \n\n\n\n\n[DEBUG]: {type(response.outputs[0])=}")
-
-
         try:
-            if isinstance(response.outputs[0], ToolExecutionEntry):
-                content = response.outputs[1].content[0].text
-            elif isinstance(response.outputs[0], MessageOutputEntry) :
-                content = response.outputs[0].content 
+            if self._conversation_id is None:
+                response = self.start_conversation(user_input)
             else:
-                _LOGGER.error(f"Error parsing response")
-                await self.async_handle_error(chat_log, f"Error parsing response")
+                response = self.keep_conversation(user_input)
+                # Continuer une conversation existante
+                  
+            # Parse the response
+            self._conversation_id = response.conversation_id if hasattr(response, 'conversation_id') else None
+            _LOGGER.info(f"\n[DEBUG]: {response=}")
+            _LOGGER.info(f" \n\n\n\n\n[DEBUG]: {type(response.outputs[0])=}")
+            try:
+                if isinstance(response.outputs[0], ToolExecutionEntry):
+                    content = response.outputs[1].content[0].text
+                elif isinstance(response.outputs[0], MessageOutputEntry):
+                    content = response.outputs[0].content
+                else:
+                    _LOGGER.error("Unknown response type")
+                    await self.async_handle_error(chat_log, "Unknown response type")
+                    return conversation.async_get_result_from_chat_log(user_input, chat_log)
+            except Exception as e:
+                _LOGGER.error(f"Error parsing response: {e}")
+                await self.async_handle_error(chat_log, f"Error parsing response: {e}")
+                return conversation.async_get_result_from_chat_log(user_input, chat_log)
+
+            _LOGGER.info(f"\n[DEBUG]: {content=}")
+            chat_log.content.append(AssistantContent(
+                agent_id=self._attr_unique_id,
+                content=content, 
+            ))
 
         except Exception as e:
-            _LOGGER.error(f"Error parsing response:  {e}")
-            await self.async_handle_error(chat_log, f"Error parsing response: {e}")
+            _LOGGER.error(f"Error processing conversation: {e}")
+            await self.async_handle_error(chat_log, f"Error processing conversation: {e}")
+            self._conversation_id = None
 
-        _LOGGER.info(f"\n[DEBUG]: {content=}")
-
-        chat_log.content.append(AssistantContent(
-            agent_id=self._attr_unique_id,
-            content=content,
-        ))
-        
         return conversation.async_get_result_from_chat_log(user_input, chat_log)
