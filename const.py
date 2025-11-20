@@ -11,7 +11,7 @@ CONF_MODEL = "model"
 # Default values
 DEFAULT_NAME = "Homestral"
 DEFAULT_CHAT_MODEL = "mistral-large-latest"
-DEFAULT_STT_MODEL = "voxtral-mini-latest"
+DEFAULT_STT_MODEL = "voxtral-small-latest"
 
 
 # Services

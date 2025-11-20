@@ -98,7 +98,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                 }],
             )
             # Extraire le texte transcrit
-            _LOGGER.info(f"\n\n[DEBUG] : {response=}")
+            _LOGGER.info(f"\n\n[DEBUG][TRANSCRIPT] : {response=}")
             text = response.choices[0].message.content
             return stt.SpeechResult(
                 text,
