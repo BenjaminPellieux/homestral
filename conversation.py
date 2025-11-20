@@ -12,15 +12,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.const import MATCH_ALL
-from mistralai import Mistral
-from mistralai.models import UserMessage
 from mistralai.models.toolexecutionentry import ToolExecutionEntry
 from mistralai.models.messageoutputentry import MessageOutputEntry
 from .const import *
 import logging
 import base64
-import aiohttp
-import os
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,19 +100,7 @@ class MistralConversationEntity(
         chat_log,
     ) -> ConversationResult:
         """Process the user input and call the API."""
-        # Check if user_input contains audio data
         
-        if user_input.attachments:
-            # Transcribe audio using Voxtral API
-            audio_data = await self._transcribe_audio(user_input.attachments[0].content)
-            if audio_data:
-                user_input.text = audio_data
-            else:
-                await self.async_handle_error(chat_log, "Error transcribing audio.")
-                return conversation.async_get_result_from_chat_log(user_input, chat_log)
-        
-
-
         _LOGGER.info(f"\n[DEBUG]: {self._conversation_id=}")
         if self._conversation_id is None:
             # Démarrer une nouvelle conversation
@@ -150,8 +135,12 @@ class MistralConversationEntity(
         try:
             if isinstance(response.outputs[0], ToolExecutionEntry):
                 content = response.outputs[1].content[0].text
-            else:
+            elif isinstance(response.outputs[0], MessageOutputEntry) :
                 content = response.outputs[0].content 
+            else:
+                _LOGGER.error(f"Error parsing response")
+                await self.async_handle_error(chat_log, f"Error parsing response")
+
         except Exception as e:
             _LOGGER.error(f"Error parsing response:  {e}")
             await self.async_handle_error(chat_log, f"Error parsing response: {e}")

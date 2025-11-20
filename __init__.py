@@ -1,19 +1,15 @@
 from mistralai import Mistral
-import os
 import voluptuous as vol
 from .const import *
 
 
-from homeassistant.config_entries import ConfigEntry, ConfigSubentry
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import (
     HomeAssistant,
-    ServiceCall,
-    ServiceResponse,
     SupportsResponse,
 )
 from homeassistant.exceptions import (
-    ConfigEntryNotReady,
     HomeAssistantError,
     ServiceValidationError,
 )
@@ -21,8 +17,6 @@ from homeassistant.exceptions import (
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers import (
     config_validation as cv,
-    device_registry as dr,
-    entity_registry as er,
     selector,
 )
 
@@ -31,11 +25,10 @@ from homeassistant.const  import Platform
 
 
 import logging
-import asyncio
 
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = [Platform.SENSOR, Platform.CONVERSATION]
+PLATFORMS = [Platform.SENSOR, Platform.CONVERSATION, Platform.STT]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

@@ -1,12 +1,14 @@
 from collections.abc import AsyncIterable
 import logging
+import base64
+import io
 from homeassistant.components import stt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from mistralai import Mistral
-import base64
-import aiohttp
+from pydub import AudioSegment
+from .const import *
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,22 +17,23 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Voxtral speech-to-text."""
-    async_add_entities([VoxtralSttProvider(config_entry)])
+    """Set up the Voxtral STT entity."""
+    async_add_entities([VoxtralSttProvider(hass, config_entry)])
 
 class VoxtralSttProvider(stt.SpeechToTextEntity):
     """Voxtral speech-to-text provider."""
 
-    def __init__(self, config_entry: ConfigEntry):
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """Set up provider."""
-        self.config_entry = config_entry
+        self.hass = hass
         self._attr_name = "Voxtral STT"
         self._attr_unique_id = f"{config_entry.entry_id}-stt"
+        self._client = Mistral(api_key=config_entry.data["api_key"])
 
     @property
     def supported_languages(self) -> list[str]:
         """Return a list of supported languages."""
-        return ["fr", "en"]
+        return ["en", "fr"]
 
     @property
     def supported_formats(self) -> list[stt.AudioFormats]:
@@ -60,17 +63,26 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
     async def async_process_audio_stream(
         self, metadata: stt.SpeechMetadata, stream: AsyncIterable[bytes]
     ) -> stt.SpeechResult:
-        """Process an audio stream to Voxtral STT service."""
+        """Process an audio stream to STT service."""
         try:
-            # Lire le flux audio et le convertir en base64
+            # Capturer l'audio et l'encoder en WAV
             audio_bytes = b''.join([chunk async for chunk in stream])
-            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            audio_segment = AudioSegment(
+                audio_bytes,
+                sample_width=2,
+                frame_rate=16000,
+                channels=1
+            )
+            wav_audio = io.BytesIO()
+            audio_segment.export(wav_audio, format="wav")
+            wav_audio.seek(0)
+            wav_bytes = wav_audio.read()
+            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
+            _LOGGER.info(f"\n\n[DEBUG] : {len(audio_bytes)=} {len(audio_base64)=}")
 
-            # Appeler l'API Voxtral pour la reconnaissance vocale
-            api_key = self.config_entry.data["api_key"]
-            client = Mistral(api_key=api_key)
-            response = client.chat.complete(
-                model="voxtral-mini-latest",
+            # Envoyer l'audio à l'API Voxtral pour la transcription
+            response = self._client.chat.complete(
+                model=DEFAULT_STT_MODEL,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -82,11 +94,11 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                             "type": "text",
                             "text": "Transcribe this audio.",
                         },
-                    ]
+                    ],
                 }],
             )
-
-            # Extraire le texte reconnu
+            # Extraire le texte transcrit
+            _LOGGER.info(f"\n\n[DEBUG] : {response=}")
             text = response.choices[0].message.content
             return stt.SpeechResult(
                 text,
