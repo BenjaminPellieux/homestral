@@ -78,7 +78,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
             wav_audio.seek(0)
             wav_bytes = wav_audio.read()
             audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-            _LOGGER.info(f"\n\n[DEBUG] : {len(audio_bytes)=} {len(audio_base64)=}")
+            _LOGGER.info(f"\n\n[DEBUG][AUDIO] : {len(audio_bytes)=} {len(audio_base64)=} {audio_base64[:10]=} {type(audio_base64[0])=}")
 
             # Envoyer l'audio à l'API Voxtral pour la transcription
             response = self._client.chat.complete(
