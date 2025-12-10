@@ -16,6 +16,7 @@ from mistralai.models.toolexecutionentry import ToolExecutionEntry
 from mistralai.models.messageoutputentry import MessageOutputEntry
 from mistralai.models import ConversationResponse
 from .const import *
+from .api_control import DeviceController
 import logging
 import base64
 from .errors import ConversationError, APIError
@@ -47,6 +48,7 @@ class MistralConversationEntity(
         self._attr_name = "Mistral Conversation"
         self._attr_unique_id = entry.entry_id
         self._conversation_id = None
+        self._device_controller = DeviceController(hass)
 
     @property
     def supported_languages(self):
@@ -108,6 +110,71 @@ class MistralConversationEntity(
             _LOGGER.error(f"Error transcribing audio: {error}")
             return None
 
+    async def _handle_device_control_command(self, command: str) -> str:
+        """Handle device control commands from user input."""
+        try:
+            # Parse the command to extract device ID, action, and parameters
+            # This is a simple parser - could be enhanced with NLP
+            parts = command.lower().split()
+            
+            # Extract device ID (simple pattern matching)
+            device_id = None
+            action = None
+            parameters = {}
+            
+            # Look for common device types
+            for i, part in enumerate(parts):
+                if part in ['light', 'switch', 'living', 'room', 'bedroom', 'kitchen']:
+                    # Try to find the full entity ID
+                    potential_id = f"{parts[i]}.{parts[i+1]}_{parts[i+2]}" if len(parts) > i+2 else parts[i]
+                    # Check if this entity exists
+                    try:
+                        device_info = await self._device_controller.get_device_info(potential_id)
+                        device_id = device_info['entity_id']
+                        break
+                    except:
+                        continue
+            
+            if not device_id:
+                return "I couldn't identify the device you're referring to. Please be more specific."
+            
+            # Extract action
+            if 'turn on' in command.lower():
+                action = 'turn_on'
+            elif 'turn off' in command.lower():
+                action = 'turn_off'
+            elif 'open' in command.lower():
+                action = 'open'
+            elif 'close' in command.lower():
+                action = 'close'
+            elif 'set' in command.lower():
+                action = 'set_temperature' if 'temperature' in command.lower() else 'set_brightness'
+                # Extract parameters
+                for part in parts:
+                    if part.replace('.', '').isdigit():
+                        parameters['temperature' if 'temperature' in command.lower() else 'brightness'] = float(part)
+                        break
+            
+            if not action:
+                return "I couldn't determine what action you want to perform."
+            
+            # Execute the command
+            result = await self._device_controller.control_device(device_id, action, parameters)
+            
+            if result.get('success'):
+                return f"Successfully {action.replace('_', ' ')} {device_id}"
+            else:
+                return f"Failed to {action.replace('_', ' ')} {device_id}"
+                
+        except Exception as e:
+            error = ConversationError(
+                message=f"Error handling device control command: {e}",
+                code="DEVICE_CONTROL_COMMAND_ERROR",
+                details={"command": command, "error": str(e)}
+            )
+            _LOGGER.error(f"Error handling device control command: {error}")
+            return f"Sorry, I encountered an error while trying to control the device: {str(e)}"
+
     def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
         
         # Démarrer une nouvelle conversation
@@ -145,6 +212,18 @@ class MistralConversationEntity(
         """Process the user input and call the API."""
         _LOGGER.info(f"\n[DEBUG]: {self._conversation_id=}")
         try:
+            # Check if this is a device control command
+            user_text = user_input.text.lower()
+            if any(keyword in user_text for keyword in ['turn on', 'turn off', 'open', 'close', 'set temperature', 'set brightness']):
+                # Try to handle as device control command
+                response_text = await self._handle_device_control_command(user_input.text)
+                chat_log.content.append(AssistantContent(
+                    agent_id=self._attr_unique_id,
+                    content=response_text,
+                ))
+                return conversation.async_get_result_from_chat_log(user_input, chat_log)
+            
+            # Otherwise, handle as regular conversation
             if self._conversation_id is None:
                 response = self.start_conversation(user_input)
             else:

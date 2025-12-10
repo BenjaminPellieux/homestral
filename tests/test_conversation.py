@@ -9,8 +9,13 @@ from homestral.errors import ConversationError
 
 
 @pytest.mark.asyncio
-async def test_async_handle_error():
+@patch('homestral.conversation.DeviceController')
+async def test_async_handle_error(mock_device_controller):
     """Test la gestion des erreurs."""
+    # Configurer le mock pour DeviceController
+    mock_device_controller_instance = MagicMock()
+    mock_device_controller.return_value = mock_device_controller_instance
+    
     # Créer une instance de MistralConversationEntity
     entity = MistralConversationEntity(None, MagicMock())
     
@@ -35,8 +40,13 @@ async def test_async_handle_error():
     assert "Details: {'key': 'value'}" in chat_log.content[0].content
 
 
-def test_supported_languages():
+@patch('homestral.conversation.DeviceController')
+def test_supported_languages(mock_device_controller):
     """Test les langues supportées."""
+    # Configurer le mock pour DeviceController
+    mock_device_controller_instance = MagicMock()
+    mock_device_controller.return_value = mock_device_controller_instance
+    
     entity = MistralConversationEntity(None, MagicMock())
     from homeassistant.const import MATCH_ALL
     assert entity.supported_languages == MATCH_ALL

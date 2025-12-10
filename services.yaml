@@ -11,3 +11,26 @@ generate_content:
         text:
           multiline: true
       example: "Hello, how can I help you?"
+
+control_device:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: homestral
+    device_id:
+      required: true
+      selector:
+        text:
+      example: "light.living_room_lights"
+    command:
+      required: true
+      selector:
+        text:
+      example: "turn_on"
+    parameters:
+      required: false
+      selector:
+        object:
+      example: {"brightness": 255, "color_temp": 400}

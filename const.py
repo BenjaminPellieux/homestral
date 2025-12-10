@@ -16,3 +16,4 @@ DEFAULT_STT_MODEL = "voxtral-small-latest"
 
 # Services
 SERVICE_GENERATE_CONTENT = "generate_content"
+SERVICE_CONTROL_DEVICE = "control_device"
