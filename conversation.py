@@ -18,9 +18,11 @@ from mistralai.models import ConversationResponse
 from .const import *
 import logging
 import base64
+from .errors import ConversationError, APIError
+from .logging_config import get_logger
 
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = get_logger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -61,10 +63,16 @@ class MistralConversationEntity(
         conversation.async_unset_agent(self.hass, self._entry)
         await super().async_will_remove_from_hass()
 
-    async def async_handle_error(self, chat_log, msg: str):
+    async def async_handle_error(self, chat_log, error):
+        """Handle errors and append error messages to the chat log."""
+        error_message = f"Error: {str(error)}"
+        if hasattr(error, 'code'):
+            error_message += f" (Code: {error.code})"
+        if hasattr(error, 'details'):
+            error_message += f" Details: {error.details}"
         chat_log.content.append(AssistantContent(
-                agent_id=self._attr_unique_id,
-                content=f"{msg}",
+            agent_id=self._attr_unique_id,
+            content=error_message,
         ))
 
     async def _transcribe_audio(self, audio_data):
@@ -92,7 +100,12 @@ class MistralConversationEntity(
             )
             return response.choices[0].message.content
         except Exception as e:
-            _LOGGER.error(f"Error transcribing audio: {e}")
+            error = AudioProcessingError(
+                message=f"Error transcribing audio: {e}",
+                code="AUDIO_TRANSCRIPTION_ERROR",
+                details={"error": str(e), "audio_data_length": len(audio_data)}
+            )
+            _LOGGER.error(f"Error transcribing audio: {error}")
             return None
 
     def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
@@ -152,8 +165,13 @@ class MistralConversationEntity(
                     await self.async_handle_error(chat_log, "Unknown response type")
                     return conversation.async_get_result_from_chat_log(user_input, chat_log)
             except Exception as e:
-                _LOGGER.error(f"Error parsing response: {e}")
-                await self.async_handle_error(chat_log, f"Error parsing response: {e}")
+                error = ConversationError(
+                    message=f"Error parsing response: {e}",
+                    code="RESPONSE_PARSING_ERROR",
+                    details={"error": str(e), "response": str(response) if 'response' in locals() else "No response"}
+                )
+                _LOGGER.error(f"Error parsing response: {error}")
+                await self.async_handle_error(chat_log, error)
                 return conversation.async_get_result_from_chat_log(user_input, chat_log)
 
             _LOGGER.info(f"\n[DEBUG]: {content=}")
@@ -163,8 +181,13 @@ class MistralConversationEntity(
             ))
 
         except Exception as e:
-            _LOGGER.error(f"Error processing conversation: {e}")
-            await self.async_handle_error(chat_log, f"Error processing conversation: {e}")
+            error = ConversationError(
+                message=f"Error processing conversation: {e}",
+                code="CONVERSATION_PROCESSING_ERROR",
+                details={"error": str(e), "conversation_id": self._conversation_id}
+            )
+            _LOGGER.error(f"Error processing conversation: {error}")
+            await self.async_handle_error(chat_log, error)
             self._conversation_id = None
 
         return conversation.async_get_result_from_chat_log(user_input, chat_log)

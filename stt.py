@@ -9,8 +9,10 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from mistralai import Mistral
 from pydub import AudioSegment
 from .const import *
+from .errors import AudioProcessingError, APIError
+from .logging_config import get_logger
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = get_logger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -105,5 +107,10 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                 stt.SpeechResultState.SUCCESS,
             )
         except Exception as e:
-            _LOGGER.error(f"Error processing audio stream: {e}")
+            error = AudioProcessingError(
+                message=f"Error processing audio stream: {e}",
+                code="AUDIO_PROCESSING_ERROR",
+                details={"error": str(e), "audio_bytes_length": len(audio_bytes) if 'audio_bytes' in locals() else 0}
+            )
+            _LOGGER.error(f"Error processing audio stream: {error}")
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)

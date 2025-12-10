@@ -37,7 +37,12 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
    cp -r homestral /path/to/homeassistant/config/custom_components/
    ```
 
-3. **Restart Home Assistant**
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Restart Home Assistant**
 
 ## Configuration
 
@@ -122,6 +127,18 @@ We welcome contributions! Please follow these steps:
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
+### Running Tests
+
+To run the tests, use the following command:
+
+```bash
+pytest tests/
+```
+
+### Development Guide
+
+For more details on the architecture, modules, and data flows, please refer to the [Development Guide](DEVELOPMENT.md).
 
 ## License
 
