@@ -71,6 +71,10 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         try:
             audio_bytes = b"".join([chunk async for chunk in stream])
 
+            if not audio_bytes:
+                _LOGGER.debug("[STT] empty audio stream, skipping API call")
+                return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+
             # Convert raw PCM to WAV container
             audio_segment = AudioSegment(
                 audio_bytes,
@@ -103,7 +107,12 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
 
             text = response.text
             _LOGGER.info(f"[STT] transcribed: {text!r}")
-            return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
+
+            if not text or not text.strip():
+                _LOGGER.debug("[STT] empty transcription (silence/noise), returning ERROR")
+                return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+
+            return stt.SpeechResult(text.strip(), stt.SpeechResultState.SUCCESS)
 
         except Exception as e:
             error = AudioProcessingError(
