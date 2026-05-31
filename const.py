@@ -11,8 +11,20 @@ CONF_MODEL = "model"
 # Default values
 DEFAULT_NAME = "Homestral"
 DEFAULT_CHAT_MODEL = "mistral-medium-latest"
-DEFAULT_STT_MODEL = "voxtral-small-latest"
+DEFAULT_STT_MODEL = "voxtral-mini-latest"
 
+# Home automation vocabulary for Voxtral 2 context_bias
+# IMPORTANT: API requires single words only — pattern ^[^,\s]+$ (no spaces, no commas)
+HOME_AUTOMATION_VOCAB = [
+    "lumière", "prise", "thermostat", "volet", "store",
+    "chauffage", "climatisation", "allume", "éteins",
+    "brightness", "temperature", "lumières",
+]
+
+# Custom HA FunctionTool names
+TOOL_GET_HA_STATE = "get_ha_state"
+TOOL_LIST_HA_ENTITIES = "list_ha_entities"
+TOOL_GET_HA_WEATHER = "get_ha_weather"
 
 # Services
 SERVICE_GENERATE_CONTENT = "generate_content"

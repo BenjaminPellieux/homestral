@@ -12,18 +12,47 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.const import MATCH_ALL
-from mistralai.models.toolexecutionentry import ToolExecutionEntry
-from mistralai.models.messageoutputentry import MessageOutputEntry
-from mistralai.models import ConversationResponse
+try:
+    from mistralai.models.toolexecutionentry import ToolExecutionEntry
+    from mistralai.models.messageoutputentry import MessageOutputEntry
+    from mistralai.models import ConversationResponse
+    from mistralai.models import FunctionCallEntry, FunctionResultEntry
+except ImportError:
+    # HA musllinux wheel uses mistralai.client.models (namespace package)
+    from mistralai.client.models import (
+        ToolExecutionEntry, MessageOutputEntry, ConversationResponse,
+        FunctionCallEntry, FunctionResultEntry,
+    )
 from .const import *
 from .api_control import DeviceController
+import json
 import logging
-import base64
-from .errors import ConversationError, APIError
+from .errors import ConversationError, APIError, AudioProcessingError
 from .logging_config import get_logger
+from .tools import HAToolExecutor, ALL_TOOLS, build_ha_context, MISTRAL_BUILTIN_TOOLS
 
 
 _LOGGER = get_logger(__name__)
+
+
+def _extract_text(content) -> str:
+    """Extract plain text from a Mistral content field.
+
+    Handles str, list[TextChunk], and mixed lists that may contain ToolReference
+    objects (web_search citations). Only TextChunk items (type='text') are kept.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for chunk in content:
+            chunk_type = getattr(chunk, "type", None)
+            if chunk_type == "text" or (chunk_type is None and hasattr(chunk, "text")):
+                parts.append(chunk.text)
+            # ToolReference (type='tool_reference') and other non-text chunks are skipped
+        return "".join(parts)
+    return str(content)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -49,6 +78,7 @@ class MistralConversationEntity(
         self._attr_unique_id = entry.entry_id
         self._conversation_id = None
         self._device_controller = DeviceController(hass)
+        self._tool_executor = HAToolExecutor(hass)
 
     @property
     def supported_languages(self):
@@ -76,39 +106,6 @@ class MistralConversationEntity(
             agent_id=self._attr_unique_id,
             content=error_message,
         ))
-
-    async def _transcribe_audio(self, audio_data):
-        """Transcribe audio data using Voxtral API."""
-        try:
-            # Encode audio data in base64
-            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-
-            # Send audio to Voxtral API for STT
-            response = await self._client.chat.complete(
-                model="voxtral-mini-latest",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_audio",
-                            "input_audio": audio_base64,
-                        },
-                        {
-                            "type": "text",
-                            "text": "Transcribe this audio.",
-                        },
-                    ]
-                }],
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            error = AudioProcessingError(
-                message=f"Error transcribing audio: {e}",
-                code="AUDIO_TRANSCRIPTION_ERROR",
-                details={"error": str(e), "audio_data_length": len(audio_data)}
-            )
-            _LOGGER.error(f"Error transcribing audio: {error}")
-            return None
 
     async def _handle_device_control_command(self, command: str) -> str:
         """Handle device control commands from user input."""
@@ -138,21 +135,24 @@ class MistralConversationEntity(
             if not device_id:
                 return "I couldn't identify the device you're referring to. Please be more specific."
             
-            # Extract action
-            if 'turn on' in command.lower():
+            # Extract action (support both English and French)
+            if any(keyword in command.lower() for keyword in ['turn on', 'allume']):
                 action = 'turn_on'
-            elif 'turn off' in command.lower():
+            elif any(keyword in command.lower() for keyword in ['turn off', 'éteins']):
                 action = 'turn_off'
-            elif 'open' in command.lower():
+            elif any(keyword in command.lower() for keyword in ['open', 'ouvre']):
                 action = 'open'
-            elif 'close' in command.lower():
+            elif any(keyword in command.lower() for keyword in ['close', 'ferme']):
                 action = 'close'
-            elif 'set' in command.lower():
-                action = 'set_temperature' if 'temperature' in command.lower() else 'set_brightness'
+            elif any(keyword in command.lower() for keyword in ['set', 'règle']):
+                if any(keyword in command.lower() for keyword in ['temperature', 'chauffage', 'climatisation']):
+                    action = 'set_temperature'
+                else:
+                    action = 'set_brightness'
                 # Extract parameters
                 for part in parts:
-                    if part.replace('.', '').isdigit():
-                        parameters['temperature' if 'temperature' in command.lower() else 'brightness'] = float(part)
+                    if part.replace('.', '').replace(',', '.').isdigit():
+                        parameters['temperature' if action == 'set_temperature' else 'brightness'] = float(part)
                         break
             
             if not action:
@@ -175,32 +175,29 @@ class MistralConversationEntity(
             _LOGGER.error(f"Error handling device control command: {error}")
             return f"Sorry, I encountered an error while trying to control the device: {str(e)}"
 
-    def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
-        
-        # Démarrer une nouvelle conversation
+    async def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
+        instructions = await build_ha_context(self.hass)
+        kwargs = dict(
+            inputs=user_input.text,
+            instructions=instructions,
+            tools=ALL_TOOLS,
+        )
         if self._entry.data.get(CONF_USE_AGENT, False):
-            # Use agent if specified in configuration
             _LOGGER.info("Starting new conversation with agent")
-            return  self._client.beta.conversations.start(
-                    agent_id=self._entry.data.get(CONF_AGENT_ID),
-                    inputs=user_input.text,
-            )
+            kwargs["agent_id"] = self._entry.data.get(CONF_AGENT_ID)
         else:
-            # Use model if no agent specified
             _LOGGER.info("Starting new conversation with model")
-            return  self._client.beta.conversations.start(
-                model=self._entry.data.get(CONF_MODEL, DEFAULT_CHAT_MODEL),
-                inputs=user_input.text
-            )
-        
+            kwargs["model"] = self._entry.data.get(CONF_MODEL, DEFAULT_CHAT_MODEL)
+        return await self._client.beta.conversations.start_async(**kwargs)
 
-    def keep_conversation(self, user_input: ConversationInput) -> ConversationResponse:
-    
-        _LOGGER.info("Continuing conversation with agent")
-        return  self._client.beta.conversations.append(
-                    conversation_id=self._conversation_id,
-                    inputs=user_input.text,
-                )
+    async def keep_conversation(self, user_input: ConversationInput) -> ConversationResponse:
+        _LOGGER.info("Continuing conversation")
+        instructions = await build_ha_context(self.hass)
+        return await self._client.beta.conversations.append_async(
+            conversation_id=self._conversation_id,
+            inputs=user_input.text,
+            completion_args={"instructions": instructions},
+        )
 
 
 
@@ -214,46 +211,92 @@ class MistralConversationEntity(
         try:
             # Check if this is a device control command
             user_text = user_input.text.lower()
-            if any(keyword in user_text for keyword in ['turn on', 'turn off', 'open', 'close', 'set temperature', 'set brightness']):
+            # Support both English and French keywords
+            device_keywords = [
+                'turn on', 'turn off', 'open', 'close', 'set temperature', 'set brightness',
+                'allume', 'éteins', 'ouvre', 'ferme', 'règle', 'temperature', 'lumière',
+                'prise', 'porte', 'store', 'volet', 'chauffage', 'climatisation'
+            ]
+            if any(keyword in user_text for keyword in device_keywords):
                 # Try to handle as device control command
-                response_text = await self._handle_device_control_command(user_input.text)
-                chat_log.content.append(AssistantContent(
-                    agent_id=self._attr_unique_id,
-                    content=response_text,
-                ))
-                return conversation.async_get_result_from_chat_log(user_input, chat_log)
+                try:
+                    response_text = await self._handle_device_control_command(user_input.text)
+                    chat_log.content.append(AssistantContent(
+                        agent_id=self._attr_unique_id,
+                        content=response_text,
+                    ))
+                    return conversation.async_get_result_from_chat_log(user_input, chat_log)
+                except Exception as e:
+                    # If device control fails, fall back to regular conversation
+                    _LOGGER.warning(f"Device control failed, falling back to conversation: {e}")
             
             # Otherwise, handle as regular conversation
             if self._conversation_id is None:
-                response = self.start_conversation(user_input)
+                response = await self.start_conversation(user_input)
             else:
-                response = self.keep_conversation(user_input)
-                # Continuer une conversation existante
+                response = await self.keep_conversation(user_input)
                   
-            # Parse the response
-            self._conversation_id = response.conversation_id if hasattr(response, 'conversation_id') else None
-            _LOGGER.info(f"\n[DEBUG]: {response=}")
-            _LOGGER.info(f" \n\n\n\n\n[DEBUG]: {type(response.outputs[0])=}")
-            try:
-                if isinstance(response.outputs[0], ToolExecutionEntry):
-                    content = response.outputs[1].content[0].text
-                elif isinstance(response.outputs[0], MessageOutputEntry):
-                    content = response.outputs[0].content
-                else:
-                    _LOGGER.error("Unknown response type")
-                    await self.async_handle_error(chat_log, "Unknown response type")
-                    return conversation.async_get_result_from_chat_log(user_input, chat_log)
-            except Exception as e:
-                error = ConversationError(
-                    message=f"Error parsing response: {e}",
-                    code="RESPONSE_PARSING_ERROR",
-                    details={"error": str(e), "response": str(response) if 'response' in locals() else "No response"}
-                )
-                _LOGGER.error(f"Error parsing response: {error}")
-                await self.async_handle_error(chat_log, error)
-                return conversation.async_get_result_from_chat_log(user_input, chat_log)
+            # Tool execution loop (max 5 iterations)
+            self._conversation_id = getattr(response, "conversation_id", None)
+            content = None
+            for iteration in range(5):
+                if not response.outputs:
+                    content = "Désolé, je n'ai pas reçu de réponse."
+                    break
 
-            _LOGGER.info(f"\n[DEBUG]: {content=}")
+                first = response.outputs[0]
+                _LOGGER.info(f"[TOOL LOOP iter={iteration}] output type: {type(first).__name__}")
+
+                if isinstance(first, ToolExecutionEntry):
+                    # Built-in Mistral server-side tool (web_search, code_interpreter, etc.)
+                    tool_name = str(first.name)
+                    _LOGGER.info(f"[TOOL built-in] {tool_name}, args: {first.arguments}")
+                    for out in response.outputs[1:]:
+                        if isinstance(out, MessageOutputEntry):
+                            content = _extract_text(out.content)
+                            break
+                    if content is None:
+                        content = "La recherche n'a pas retourné de résultat."
+                    break
+
+                elif isinstance(first, FunctionCallEntry):
+                    # Custom HA FunctionTool — exécuté côté client
+                    tool_name = first.name
+                    raw_args = first.arguments
+                    args_str = raw_args if isinstance(raw_args, str) else json.dumps(raw_args)
+                    _LOGGER.info(f"[TOOL custom] {tool_name}, args: {args_str}")
+
+                    tool_result = await self._tool_executor.execute(
+                        tool_name,
+                        json.loads(args_str or "{}"),
+                    )
+                    _LOGGER.info(f"[TOOL result] {tool_result[:200]}")
+
+                    result_entry = FunctionResultEntry(
+                        tool_call_id=first.tool_call_id,
+                        result=tool_result,
+                    )
+                    response = await self._client.beta.conversations.append_async(
+                        conversation_id=self._conversation_id,
+                        inputs=[result_entry],
+                    )
+                    self._conversation_id = getattr(response, "conversation_id", self._conversation_id)
+
+                elif isinstance(first, MessageOutputEntry):
+                    content = _extract_text(first.content)
+                    break
+                else:
+                    _LOGGER.warning(f"[TOOL LOOP] unknown output type: {type(first)}")
+                    content = "Réponse inattendue du modèle."
+                    break
+            else:
+                content = "La réponse a nécessité trop d'étapes. Veuillez reformuler."
+
+            if content is None:
+                content = "Aucune réponse disponible."
+
+            content = _extract_text(content) if content is not None else "Aucune réponse."
+            _LOGGER.info(f"[CONV] final content: {content[:200]}")
             chat_log.content.append(AssistantContent(
                 agent_id=self._attr_unique_id,
                 content=content, 

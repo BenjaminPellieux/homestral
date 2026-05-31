@@ -5,8 +5,7 @@ Module for controlling Home Assistant devices via Mistral API.
 import logging
 from typing import Optional, Dict, Any
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_registry import EntityRegistry
-from homeassistant.helpers.device_registry import DeviceRegistry
+from homeassistant.helpers import entity_registry as er, device_registry as dr
 from homeassistant.exceptions import HomeAssistantError
 from .const import *
 from .errors import APIError, ConfigurationError
@@ -16,12 +15,12 @@ _LOGGER = get_logger(__name__)
 
 class DeviceController:
     """Class to control Home Assistant devices."""
-    
+
     def __init__(self, hass: HomeAssistant):
         """Initialize the device controller."""
         self.hass = hass
-        self.entity_registry = EntityRegistry(hass)
-        self.device_registry = DeviceRegistry(hass)
+        self.entity_registry = er.async_get(hass)
+        self.device_registry = dr.async_get(hass)
     
     async def get_device_info(self, device_id: str) -> Dict[str, Any]:
         """Get information about a specific device."""

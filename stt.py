@@ -1,18 +1,23 @@
 from collections.abc import AsyncIterable
-import logging
-import base64
+import asyncio
 import io
 from homeassistant.components import stt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from mistralai import Mistral
+try:
+    from mistralai import Mistral
+    from mistralai.models import File as MistralFile
+except ImportError:
+    from mistralai.client import Mistral  # HA musllinux wheel (namespace package)
+    from mistralai.client.models import File as MistralFile
 from pydub import AudioSegment
-from .const import *
-from .errors import AudioProcessingError, APIError
+from .const import DEFAULT_STT_MODEL, HOME_AUTOMATION_VOCAB
+from .errors import AudioProcessingError
 from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -22,8 +27,9 @@ async def async_setup_entry(
     """Set up the Voxtral STT entity."""
     async_add_entities([VoxtralSttProvider(hass, config_entry)])
 
+
 class VoxtralSttProvider(stt.SpeechToTextEntity):
-    """Voxtral speech-to-text provider."""
+    """Voxtral speech-to-text provider using Voxtral Transcribe 2 API."""
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """Set up provider."""
@@ -34,83 +40,76 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
 
     @property
     def supported_languages(self) -> list[str]:
-        """Return a list of supported languages."""
-        return ["en", "fr"]
+        """Return languages supported by Voxtral Transcribe 2 (13 languages)."""
+        return ["en", "fr", "zh", "hi", "es", "ar", "pt", "ru", "de", "ja", "ko", "it", "nl"]
 
     @property
     def supported_formats(self) -> list[stt.AudioFormats]:
-        """Return a list of supported formats."""
         return [stt.AudioFormats.WAV]
 
     @property
     def supported_codecs(self) -> list[stt.AudioCodecs]:
-        """Return a list of supported codecs."""
         return [stt.AudioCodecs.PCM]
 
     @property
     def supported_bit_rates(self) -> list[stt.AudioBitRates]:
-        """Return a list of supported bitrates."""
         return [stt.AudioBitRates.BITRATE_16]
 
     @property
     def supported_sample_rates(self) -> list[stt.AudioSampleRates]:
-        """Return a list of supported samplerates."""
         return [stt.AudioSampleRates.SAMPLERATE_16000]
 
     @property
     def supported_channels(self) -> list[stt.AudioChannels]:
-        """Return a list of supported channels."""
         return [stt.AudioChannels.CHANNEL_MONO]
 
     async def async_process_audio_stream(
         self, metadata: stt.SpeechMetadata, stream: AsyncIterable[bytes]
     ) -> stt.SpeechResult:
-        """Process an audio stream to STT service."""
+        """Process an audio stream using Voxtral Transcribe 2 /v1/audio/transcriptions."""
+        audio_bytes = b""
         try:
-            # Capturer l'audio et l'encoder en WAV
-            audio_bytes = b''.join([chunk async for chunk in stream])
+            audio_bytes = b"".join([chunk async for chunk in stream])
+
+            # Convert raw PCM to WAV container
             audio_segment = AudioSegment(
                 audio_bytes,
                 sample_width=2,
                 frame_rate=16000,
-                channels=1
+                channels=1,
             )
-            wav_audio = io.BytesIO()
-            audio_segment.export(wav_audio, format="wav")
-            wav_audio.seek(0)
-            wav_bytes = wav_audio.read()
-            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-            _LOGGER.info(f"\n\n[DEBUG][AUDIO] : {len(audio_bytes)=} {len(audio_base64)=} {audio_base64[:10]=} {type(audio_base64[0])=}")
+            buf = io.BytesIO()
+            audio_segment.export(buf, format="wav")
+            wav_bytes = buf.getvalue()
 
-            # Envoyer l'audio à l'API Voxtral pour la transcription
-            response = self._client.chat.complete(
-                model=DEFAULT_STT_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_audio",
-                            "input_audio": audio_base64,
-                        },
-                        {
-                            "type": "text",
-                            "text": "Transcribe this audio.",
-                        },
-                    ],
-                }],
+            _LOGGER.info(f"[STT] audio captured: {len(audio_bytes)} raw bytes → {len(wav_bytes)} WAV bytes")
+
+            # Voxtral Transcribe 2: audio.transcriptions.complete (SDK 2.4.8)
+            language = metadata.language if metadata.language and metadata.language != "auto" else None
+            audio_file = MistralFile(
+                file_name="audio.wav",
+                content=wav_bytes,
+                content_type="audio/wav",
             )
-            # Extraire le texte transcrit
-            _LOGGER.info(f"\n\n[DEBUG][TRANSCRIPT] : {response=}")
-            text = response.choices[0].message.content
-            return stt.SpeechResult(
-                text,
-                stt.SpeechResultState.SUCCESS,
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._client.audio.transcriptions.complete(
+                    model=DEFAULT_STT_MODEL,
+                    file=audio_file,
+                    language=language,
+                    context_bias=HOME_AUTOMATION_VOCAB,
+                ),
             )
+
+            text = response.text
+            _LOGGER.info(f"[STT] transcribed: {text!r}")
+            return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
+
         except Exception as e:
             error = AudioProcessingError(
                 message=f"Error processing audio stream: {e}",
                 code="AUDIO_PROCESSING_ERROR",
-                details={"error": str(e), "audio_bytes_length": len(audio_bytes) if 'audio_bytes' in locals() else 0}
+                details={"error": str(e), "audio_bytes_length": len(audio_bytes)},
             )
             _LOGGER.error(f"Error processing audio stream: {error}")
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
