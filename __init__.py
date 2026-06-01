@@ -17,9 +17,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     except ImportError:
         from mistralai.client import Mistral  # HA musllinux wheel (namespace package)
     entry.runtime_data = Mistral(api_key=entry.data["api_key"])
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "conversation", "stt"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "conversation", "stt", "tts"])
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "conversation", "stt"])
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "conversation", "stt", "tts"])

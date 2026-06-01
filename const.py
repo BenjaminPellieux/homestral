@@ -21,6 +21,11 @@ HOME_AUTOMATION_VOCAB = [
     "brightness", "temperature", "lumières",
 ]
 
+# TTS (Text-to-Speech) — Voxtral TTS
+DEFAULT_TTS_MODEL  = "voxtral-mini-tts-2603"
+DEFAULT_TTS_VOICE  = "casual_female"
+DEFAULT_TTS_FORMAT = "mp3"
+
 # Custom HA FunctionTool names
 TOOL_GET_HA_STATE = "get_ha_state"
 TOOL_LIST_HA_ENTITIES = "list_ha_entities"
