@@ -24,10 +24,8 @@ except ImportError:
         FunctionCallEntry, FunctionResultEntry,
     )
 from .const import *
-from .api_control import DeviceController
 import json
-import logging
-from .errors import ConversationError, APIError, AudioProcessingError
+from .errors import ConversationError
 from .logging_config import get_logger
 from .tools import HAToolExecutor, ALL_TOOLS, build_ha_context, MISTRAL_BUILTIN_TOOLS
 
@@ -77,7 +75,6 @@ class MistralConversationEntity(
         self._attr_name = "Mistral Conversation"
         self._attr_unique_id = entry.entry_id
         self._conversation_id = None
-        self._device_controller = DeviceController(hass)
         self._tool_executor = HAToolExecutor(hass)
 
     @property
@@ -106,74 +103,6 @@ class MistralConversationEntity(
             agent_id=self._attr_unique_id,
             content=error_message,
         ))
-
-    async def _handle_device_control_command(self, command: str) -> str:
-        """Handle device control commands from user input."""
-        try:
-            # Parse the command to extract device ID, action, and parameters
-            # This is a simple parser - could be enhanced with NLP
-            parts = command.lower().split()
-            
-            # Extract device ID (simple pattern matching)
-            device_id = None
-            action = None
-            parameters = {}
-            
-            # Look for common device types
-            for i, part in enumerate(parts):
-                if part in ['light', 'switch', 'living', 'room', 'bedroom', 'kitchen']:
-                    # Try to find the full entity ID
-                    potential_id = f"{parts[i]}.{parts[i+1]}_{parts[i+2]}" if len(parts) > i+2 else parts[i]
-                    # Check if this entity exists
-                    try:
-                        device_info = await self._device_controller.get_device_info(potential_id)
-                        device_id = device_info['entity_id']
-                        break
-                    except:
-                        continue
-            
-            if not device_id:
-                return "I couldn't identify the device you're referring to. Please be more specific."
-            
-            # Extract action (support both English and French)
-            if any(keyword in command.lower() for keyword in ['turn on', 'allume']):
-                action = 'turn_on'
-            elif any(keyword in command.lower() for keyword in ['turn off', 'éteins']):
-                action = 'turn_off'
-            elif any(keyword in command.lower() for keyword in ['open', 'ouvre']):
-                action = 'open'
-            elif any(keyword in command.lower() for keyword in ['close', 'ferme']):
-                action = 'close'
-            elif any(keyword in command.lower() for keyword in ['set', 'règle']):
-                if any(keyword in command.lower() for keyword in ['temperature', 'chauffage', 'climatisation']):
-                    action = 'set_temperature'
-                else:
-                    action = 'set_brightness'
-                # Extract parameters
-                for part in parts:
-                    if part.replace('.', '').replace(',', '.').isdigit():
-                        parameters['temperature' if action == 'set_temperature' else 'brightness'] = float(part)
-                        break
-            
-            if not action:
-                return "I couldn't determine what action you want to perform."
-            
-            # Execute the command
-            result = await self._device_controller.control_device(device_id, action, parameters)
-            
-            if result.get('success'):
-                return f"Successfully {action.replace('_', ' ')} {device_id}"
-            else:
-                return f"Failed to {action.replace('_', ' ')} {device_id}"
-                
-        except Exception as e:
-            error = ConversationError(
-                message=f"Error handling device control command: {e}",
-                code="DEVICE_CONTROL_COMMAND_ERROR",
-                details={"command": command, "error": str(e)}
-            )
-            _LOGGER.error(f"Error handling device control command: {error}")
-            return f"Sorry, I encountered an error while trying to control the device: {str(e)}"
 
     async def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
         instructions = await build_ha_context(self.hass)
@@ -207,30 +136,8 @@ class MistralConversationEntity(
         chat_log,
     ) -> ConversationResult:
         """Process the user input and call the API."""
-        _LOGGER.info(f"\n[DEBUG]: {self._conversation_id=}")
+        _LOGGER.info(f"[CONV] new message, conversation_id={self._conversation_id!r}")
         try:
-            # Check if this is a device control command
-            user_text = user_input.text.lower()
-            # Support both English and French keywords
-            device_keywords = [
-                'turn on', 'turn off', 'open', 'close', 'set temperature', 'set brightness',
-                'allume', 'éteins', 'ouvre', 'ferme', 'règle', 'temperature', 'lumière',
-                'prise', 'porte', 'store', 'volet', 'chauffage', 'climatisation'
-            ]
-            if any(keyword in user_text for keyword in device_keywords):
-                # Try to handle as device control command
-                try:
-                    response_text = await self._handle_device_control_command(user_input.text)
-                    chat_log.content.append(AssistantContent(
-                        agent_id=self._attr_unique_id,
-                        content=response_text,
-                    ))
-                    return conversation.async_get_result_from_chat_log(user_input, chat_log)
-                except Exception as e:
-                    # If device control fails, fall back to regular conversation
-                    _LOGGER.warning(f"Device control failed, falling back to conversation: {e}")
-            
-            # Otherwise, handle as regular conversation
             if self._conversation_id is None:
                 response = await self.start_conversation(user_input)
             else:
