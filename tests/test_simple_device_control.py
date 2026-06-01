@@ -1,110 +1,152 @@
 """
-Simple tests for device control functionality.
+Tests for HAToolExecutor device control via control_ha_device FunctionTool.
 """
 
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from homestral.conversation import MistralConversationEntity
 
 
 @pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_device_control_basic(mock_device_controller):
-    """Test basic device control functionality."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'light.test_light',
-        'name': 'Test Light',
-        'platform': 'light',
-        'capabilities': {
-            'state': 'off',
-            'supported_commands': ['turn_on', 'turn_off']
+async def test_control_ha_device_turn_on_light():
+    """HAToolExecutor routes control_ha_device to DeviceController."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    with patch("homestral.tools.DeviceController") as mock_dc_class:
+        mock_dc = AsyncMock()
+        mock_dc_class.return_value = mock_dc
+        mock_dc.control_device.return_value = {
+            "success": True,
+            "entity_id": "light.salon",
+            "command": "turn_on",
+            "parameters": {},
         }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'light.test_light',
-        'command': 'turn_on',
-        'parameters': {}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Test the device control command handler directly
-    result = await entity._handle_device_control_command("turn on test light")
-    
-    # Verify device control was called
-    mock_controller_instance.get_device_info.assert_called_once()
-    mock_controller_instance.control_device.assert_called_once()
-    
-    # Verify response
-    assert "Successfully turn_on light.test_light" in result
+
+        executor = HAToolExecutor(mock_hass)
+        raw = await executor.execute(
+            "control_ha_device",
+            {"entity_id": "light.salon", "command": "turn_on"},
+        )
+
+        result = json.loads(raw)
+        assert result["success"] is True
+        assert result["entity_id"] == "light.salon"
+        mock_dc.control_device.assert_called_once_with("light.salon", "turn_on", {})
 
 
 @pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_device_control_keyword_detection(mock_device_controller):
-    """Test device control keyword detection."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'light.test_light',
-        'name': 'Test Light',
-        'platform': 'light',
-        'capabilities': {
-            'state': 'off',
-            'supported_commands': ['turn_on', 'turn_off']
+async def test_control_ha_device_set_temperature():
+    """HAToolExecutor passes temperature parameter to DeviceController."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    with patch("homestral.tools.DeviceController") as mock_dc_class:
+        mock_dc = AsyncMock()
+        mock_dc_class.return_value = mock_dc
+        mock_dc.control_device.return_value = {
+            "success": True,
+            "entity_id": "climate.chambre",
+            "command": "set_temperature",
+            "parameters": {"temperature": 20.0},
         }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'light.test_light',
-        'command': 'turn_on',
-        'parameters': {}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input with French command
-    user_input = MagicMock()
-    user_input.text = "allume la lumière test"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Check if device control was attempted
-    print(f"get_device_info call count: {mock_controller_instance.get_device_info.call_count}")
-    print(f"control_device call count: {mock_controller_instance.control_device.call_count}")
-    print(f"Chat log content: {chat_log.content}")
-    
-    # Verify device control was called
-    if mock_controller_instance.get_device_info.call_count > 0:
-        mock_controller_instance.get_device_info.assert_called_once()
-        mock_controller_instance.control_device.assert_called_once()
-        assert len(chat_log.content) == 1
-    else:
-        # If device control wasn't called, check why
-        assert len(chat_log.content) == 1
-        assert "Error: Unknown response type" in chat_log.content[0].content
+
+        executor = HAToolExecutor(mock_hass)
+        raw = await executor.execute(
+            "control_ha_device",
+            {
+                "entity_id": "climate.chambre",
+                "command": "set_temperature",
+                "parameters": {"temperature": 20.0},
+            },
+        )
+
+        result = json.loads(raw)
+        assert result["success"] is True
+        mock_dc.control_device.assert_called_once_with(
+            "climate.chambre", "set_temperature", {"temperature": 20.0}
+        )
+
+
+@pytest.mark.asyncio
+async def test_control_ha_device_missing_parameters_defaults_to_empty():
+    """parameters key is optional — executor passes {} when absent."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    with patch("homestral.tools.DeviceController") as mock_dc_class:
+        mock_dc = AsyncMock()
+        mock_dc_class.return_value = mock_dc
+        mock_dc.control_device.return_value = {"success": True, "entity_id": "switch.prise", "command": "turn_off"}
+
+        executor = HAToolExecutor(mock_hass)
+        await executor.execute("control_ha_device", {"entity_id": "switch.prise", "command": "turn_off"})
+
+        mock_dc.control_device.assert_called_once_with("switch.prise", "turn_off", {})
+
+
+@pytest.mark.asyncio
+async def test_control_ha_device_api_error_returns_error_json():
+    """DeviceController exception is caught and returned as JSON error."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    with patch("homestral.tools.DeviceController") as mock_dc_class:
+        mock_dc = AsyncMock()
+        mock_dc_class.return_value = mock_dc
+        mock_dc.control_device.side_effect = RuntimeError("HA unavailable")
+
+        executor = HAToolExecutor(mock_hass)
+        raw = await executor.execute("control_ha_device", {"entity_id": "light.x", "command": "turn_on"})
+
+        result = json.loads(raw)
+        assert "error" in result
+
+
+def test_list_ha_entities_truncation_note():
+    """_list_ha_entities adds a note when more than 30 entities exist."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    fake_states = []
+    for i in range(35):
+        s = MagicMock()
+        s.entity_id = f"light.lamp_{i}"
+        s.state = "off"
+        s.attributes = {"friendly_name": f"Lamp {i}"}
+        fake_states.append(s)
+    mock_hass.states.async_all.return_value = fake_states
+
+    executor = HAToolExecutor(mock_hass)
+    result = executor._list_ha_entities("light")
+
+    assert len(result["entities"]) == 30
+    assert result["total"] == 35
+    assert result["truncated"] is True
+    assert "note" in result
+    assert "35" in result["note"]
+
+
+def test_list_ha_entities_no_note_when_under_limit():
+    """No note field when entity count is within the 30-entity limit."""
+    from homestral.tools import HAToolExecutor
+
+    mock_hass = MagicMock()
+    fake_states = []
+    for i in range(10):
+        s = MagicMock()
+        s.entity_id = f"light.lamp_{i}"
+        s.state = "on"
+        s.attributes = {}
+        fake_states.append(s)
+    mock_hass.states.async_all.return_value = fake_states
+
+    executor = HAToolExecutor(mock_hass)
+    result = executor._list_ha_entities("light")
+
+    assert len(result["entities"]) == 10
+    assert result["truncated"] is False
+    assert "note" not in result
 
 
 if __name__ == "__main__":

@@ -1,357 +1,203 @@
 """
-Tests for real-world scenarios with natural language device control.
+Integration tests for the Mistral tool loop in MistralConversationEntity.
+
+These tests verify that FunctionCallEntry (control_ha_device, get_ha_state, etc.)
+flows through _async_handle_message correctly — device control is no longer done
+via a keyword parser but via the LLM tool call mechanism.
 """
 
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from homestral.conversation import MistralConversationEntity
-from homestral.api_control import DeviceController
-from homestral.errors import ConversationError
+
+
+def _make_function_call_entry(name, arguments, tool_call_id="call_001"):
+    """Build a mock FunctionCallEntry."""
+    entry = MagicMock()
+    entry.__class__.__name__ = "FunctionCallEntry"
+    entry.name = name
+    entry.arguments = json.dumps(arguments) if isinstance(arguments, dict) else arguments
+    entry.tool_call_id = tool_call_id
+    return entry
+
+
+def _make_message_entry(text):
+    """Build a mock MessageOutputEntry."""
+    entry = MagicMock()
+    entry.__class__.__name__ = "MessageOutputEntry"
+    entry.content = text
+    return entry
+
+
+def _make_tool_execution_entry(name):
+    """Build a mock ToolExecutionEntry (Mistral built-in, e.g. web_search)."""
+    entry = MagicMock()
+    entry.__class__.__name__ = "ToolExecutionEntry"
+    entry.name = name
+    entry.arguments = {}
+    return entry
+
+
+def _build_entity(hass=None):
+    """Create a MistralConversationEntity with mocked dependencies."""
+    from homestral.conversation import MistralConversationEntity
+
+    mock_hass = hass or MagicMock()
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+    mock_entry.runtime_data = MagicMock()
+    mock_entry.data = {
+        "api_key": "test",
+        "use_agent": False,
+        "model": "mistral-medium-latest",
+    }
+    entity = MistralConversationEntity(mock_hass, mock_entry)
+    return entity
 
 
 @pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_turn_on_living_room_light(mock_device_controller):
-    """Test turning on living room light with natural language command."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'light.living_room_light',
-        'name': 'Living Room Light',
-        'platform': 'light',
-        'capabilities': {
-            'state': 'off',
-            'attributes': ['brightness', 'color_temp'],
-            'supported_commands': ['turn_on', 'turn_off', 'set_brightness']
-        }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'light.living_room_light',
-        'command': 'turn_on',
-        'parameters': {}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Allume la lumière du salon"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify device control was called
-    mock_controller_instance.get_device_info.assert_called_once_with("light.living_room_light")
-    mock_controller_instance.control_device.assert_called_once_with(
-        "light.living_room_light", "turn_on", {}
+async def test_tool_loop_control_ha_device():
+    """
+    When Mistral returns a FunctionCallEntry for control_ha_device, the executor
+    is called and the model's follow-up MessageOutputEntry is returned to the user.
+    """
+    from mistralai.models import FunctionCallEntry, MessageOutputEntry, ToolExecutionEntry
+
+    entity = _build_entity()
+
+    # First API response: FunctionCallEntry asking to turn on the light
+    func_call = _make_function_call_entry(
+        "control_ha_device",
+        {"entity_id": "light.salon", "command": "turn_on"},
     )
-    
-    # Verify response was added to chat log
-    assert len(chat_log.content) == 1
-    assert "Successfully turn_on light.living_room_light" in chat_log.content[0].content
+    first_response = MagicMock()
+    first_response.conversation_id = "conv_001"
+    first_response.outputs = [func_call]
 
+    # Tool executor succeeds
+    tool_result_json = json.dumps({"success": True, "entity_id": "light.salon", "command": "turn_on"})
 
-@pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_set_thermostat_temperature(mock_device_controller):
-    """Test setting thermostat temperature with natural language."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'climate.thermostat',
-        'name': 'Thermostat',
-        'platform': 'climate',
-        'capabilities': {
-            'state': 'heat',
-            'attributes': ['temperature', 'hvac_mode'],
-            'supported_commands': ['set_temperature', 'set_hvac_mode']
-        }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'climate.thermostat',
-        'command': 'set_temperature',
-        'parameters': {'temperature': 22.0}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Règle la température à 22 degrés"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify device control was called with correct parameters
-    mock_controller_instance.control_device.assert_called_once()
-    call_args = mock_controller_instance.control_device.call_args[0]
-    assert call_args[0] == "climate.thermostat"
-    assert call_args[1] == "set_temperature"
-    assert call_args[2]['temperature'] == 22.0
-    
-    # Verify success response
-    assert len(chat_log.content) == 1
-    assert "Successfully set_temperature climate.thermostat" in chat_log.content[0].content
+    # Second API response: model confirms the action
+    msg_entry = _make_message_entry("J'ai allumé la lumière du salon.")
+    second_response = MagicMock()
+    second_response.conversation_id = "conv_001"
+    second_response.outputs = [msg_entry]
 
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=first_response)
+    entity._client.beta.conversations.append_async = AsyncMock(return_value=second_response)
 
-@pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_turn_off_all_switches(mock_device_controller):
-    """Test turning off all switches command."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response for switch
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'switch.all_switches',
-        'name': 'All Switches',
-        'platform': 'switch',
-        'capabilities': {
-            'state': 'on',
-            'attributes': [],
-            'supported_commands': ['turn_on', 'turn_off', 'toggle']
-        }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'switch.all_switches',
-        'command': 'turn_off',
-        'parameters': {}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Éteins toutes les prises"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify device control was called
-    mock_controller_instance.control_device.assert_called_once_with(
-        "switch.all_switches", "turn_off", {}
+    with patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec, \
+         patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
+         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
+        mock_exec.return_value = tool_result_json
+        mock_result.return_value = MagicMock()
+
+        # Patch isinstance checks to use our mocks
+        import homestral.conversation as conv_mod
+        with patch.object(conv_mod, "FunctionCallEntry", type(func_call)), \
+             patch.object(conv_mod, "MessageOutputEntry", type(msg_entry)):
+
+            chat_log = MagicMock()
+            chat_log.content = []
+            user_input = MagicMock()
+            user_input.text = "Allume la lumière du salon"
+
+            await entity._async_handle_message(user_input, chat_log)
+
+    mock_exec.assert_called_once_with(
+        "control_ha_device",
+        {"entity_id": "light.salon", "command": "turn_on"},
     )
-    
-    # Verify response
     assert len(chat_log.content) == 1
-    assert "Successfully turn_off switch.all_switches" in chat_log.content[0].content
+    assert "allumé" in chat_log.content[0].content.lower()
 
 
 @pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_open_garage_door(mock_device_controller):
-    """Test opening garage door with natural language."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'cover.garage_door',
-        'name': 'Garage Door',
-        'platform': 'cover',
-        'capabilities': {
-            'state': 'closed',
-            'attributes': ['position'],
-            'supported_commands': ['open', 'close', 'stop', 'set_position']
-        }
-    }
-    
-    # Mock control response
-    mock_controller_instance.control_device.return_value = {
-        'success': True,
-        'entity_id': 'cover.garage_door',
-        'command': 'open',
-        'parameters': {}
-    }
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Ouvre la porte du garage"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify device control was called
-    mock_controller_instance.control_device.assert_called_once_with(
-        "cover.garage_door", "open", {}
+async def test_tool_loop_direct_message_no_tool():
+    """
+    When Mistral answers directly (MessageOutputEntry, no tool call), the content
+    is appended to the chat log unchanged.
+    """
+    from mistralai.models import FunctionCallEntry, MessageOutputEntry
+
+    entity = _build_entity()
+
+    msg_entry = _make_message_entry("Bonjour, comment puis-je vous aider ?")
+    response = MagicMock()
+    response.conversation_id = "conv_002"
+    response.outputs = [msg_entry]
+
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
+
+    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
+         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
+        mock_result.return_value = MagicMock()
+
+        import homestral.conversation as conv_mod
+        with patch.object(conv_mod, "FunctionCallEntry", type(MagicMock())), \
+             patch.object(conv_mod, "MessageOutputEntry", type(msg_entry)):
+
+            chat_log = MagicMock()
+            chat_log.content = []
+            user_input = MagicMock()
+            user_input.text = "Bonjour"
+
+            await entity._async_handle_message(user_input, chat_log)
+
+    assert len(chat_log.content) == 1
+    assert "Bonjour" in chat_log.content[0].content
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_empty_outputs_returns_default_message():
+    """An empty outputs list results in the fallback 'no response' message."""
+    entity = _build_entity()
+
+    response = MagicMock()
+    response.conversation_id = "conv_003"
+    response.outputs = []
+
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
+
+    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
+         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
+        mock_result.return_value = MagicMock()
+
+        chat_log = MagicMock()
+        chat_log.content = []
+        user_input = MagicMock()
+        user_input.text = "Test vide"
+
+        await entity._async_handle_message(user_input, chat_log)
+
+    assert len(chat_log.content) == 1
+    assert chat_log.content[0].content  # some fallback message
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_api_exception_resets_conversation():
+    """An API exception appends an error message and resets the conversation ID."""
+    entity = _build_entity()
+    entity._conversation_id = "existing_conv"
+
+    entity._client.beta.conversations.append_async = AsyncMock(
+        side_effect=RuntimeError("API down")
     )
-    
-    # Verify response
+
+    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
+         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
+        mock_result.return_value = MagicMock()
+
+        chat_log = MagicMock()
+        chat_log.content = []
+        user_input = MagicMock()
+        user_input.text = "Quelle heure est-il ?"
+
+        await entity._async_handle_message(user_input, chat_log)
+
+    assert entity._conversation_id is None
     assert len(chat_log.content) == 1
-    assert "Successfully open cover.garage_door" in chat_log.content[0].content
-
-
-@pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_device_not_found_error(mock_device_controller):
-    """Test handling of device not found error."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info to raise error
-    from homestral.errors import ConfigurationError
-    mock_controller_instance.get_device_info.side_effect = ConfigurationError(
-        message="Device/Entity not found: unknown_device",
-        code="DEVICE_NOT_FOUND",
-        details={"device_id": "unknown_device"}
-    )
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Allume l'appareil inconnu"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify error response
-    assert len(chat_log.content) == 1
-    assert "I couldn't identify the device" in chat_log.content[0].content
-
-
-@pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_unsupported_command_error(mock_device_controller):
-    """Test handling of unsupported command error."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Mock device info response
-    mock_controller_instance.get_device_info.return_value = {
-        'type': 'entity',
-        'entity_id': 'sensor.temperature',
-        'name': 'Temperature Sensor',
-        'platform': 'sensor',
-        'capabilities': {
-            'state': '22.5',
-            'attributes': ['unit_of_measurement'],
-            'supported_commands': []  # Sensors typically don't support commands
-        }
-    }
-    
-    # Mock control to raise error
-    from homestral.errors import ConfigurationError
-    mock_controller_instance.control_device.side_effect = ConfigurationError(
-        message="Unsupported domain: sensor",
-        code="UNSUPPORTED_DOMAIN",
-        details={"domain": "sensor", "entity_id": "sensor.temperature"}
-    )
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input
-    user_input = MagicMock()
-    user_input.text = "Allume le capteur de température"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify error response
-    assert len(chat_log.content) == 1
-    assert "Sorry, I encountered an error" in chat_log.content[0].content
-
-
-@pytest.mark.asyncio
-@patch('homestral.conversation.DeviceController')
-async def test_non_device_command_passthrough(mock_device_controller):
-    """Test that non-device commands are passed through to Mistral AI."""
-    # Setup mocks
-    mock_controller_instance = MagicMock()
-    mock_device_controller.return_value = mock_controller_instance
-    
-    # Create conversation entity
-    entity = MistralConversationEntity(None, MagicMock())
-    
-    # Mock the Mistral client
-    mock_client = MagicMock()
-    mock_conversation_response = MagicMock()
-    mock_conversation_response.conversation_id = "test_conversation_123"
-    
-    # Mock outputs
-    mock_message_entry = MagicMock()
-    mock_message_entry.content = "Hello! How can I help you today?"
-    mock_conversation_response.outputs = [mock_message_entry]
-    
-    mock_client.beta.conversations.start.return_value = mock_conversation_response
-    entity._client = mock_client
-    
-    # Create chat log mock
-    chat_log = MagicMock()
-    chat_log.content = []
-    
-    # Create user input (non-device command)
-    user_input = MagicMock()
-    user_input.text = "What's the weather today?"
-    
-    # Call the message handler
-    result = await entity._async_handle_message(user_input, chat_log)
-    
-    # Verify that device control was NOT called
-    mock_controller_instance.get_device_info.assert_not_called()
-    mock_controller_instance.control_device.assert_not_called()
-    
-    # Verify that Mistral conversation was called instead
-    mock_client.beta.conversations.start.assert_called_once()
-    
-    # Verify response from Mistral was added to chat log
-    assert len(chat_log.content) == 1
-    assert "Hello! How can I help you today?" in chat_log.content[0].content
+    assert "Error" in chat_log.content[0].content
 
 
 if __name__ == "__main__":
