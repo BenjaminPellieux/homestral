@@ -167,25 +167,32 @@ class MistralConversationEntity(
                     break
 
                 elif isinstance(first, FunctionCallEntry):
-                    # Custom HA FunctionTool — exécuté côté client
-                    tool_name = first.name
-                    raw_args = first.arguments
-                    args_str = raw_args if isinstance(raw_args, str) else json.dumps(raw_args)
-                    _LOGGER.info(f"[TOOL custom] {tool_name}, args: {args_str}")
-
-                    tool_result = await self._tool_executor.execute(
-                        tool_name,
-                        json.loads(args_str or "{}"),
-                    )
-                    _LOGGER.info(f"[TOOL result] {tool_result[:200]}")
-
-                    result_entry = FunctionResultEntry(
-                        tool_call_id=first.tool_call_id,
-                        result=tool_result,
-                    )
+                    # Collect ALL function calls — Mistral may batch several in one response.
+                    # Sending only the first result causes HTTP 400 "missing function results".
+                    all_calls = [o for o in response.outputs if isinstance(o, FunctionCallEntry)]
+                    result_entries = []
+                    for call in all_calls:
+                        args_str = (
+                            call.arguments if isinstance(call.arguments, str)
+                            else json.dumps(call.arguments)
+                        )
+                        _LOGGER.info(f"[TOOL custom] {call.name}, args: {args_str}")
+                        try:
+                            tool_result = await self._tool_executor.execute(
+                                call.name,
+                                json.loads(args_str or "{}"),
+                            )
+                        except Exception as exc:
+                            _LOGGER.error(f"[TOOL error] {call.name}: {exc}")
+                            tool_result = json.dumps({"error": str(exc)})
+                        _LOGGER.info(f"[TOOL result] {call.name}: {tool_result[:200]}")
+                        result_entries.append(FunctionResultEntry(
+                            tool_call_id=call.tool_call_id,
+                            result=tool_result,
+                        ))
                     response = await self._client.beta.conversations.append_async(
                         conversation_id=self._conversation_id,
-                        inputs=[result_entry],
+                        inputs=result_entries,
                     )
                     self._conversation_id = getattr(response, "conversation_id", self._conversation_id)
 
@@ -202,7 +209,7 @@ class MistralConversationEntity(
             if content is None:
                 content = "Aucune réponse disponible."
 
-            content = _extract_text(content) if content is not None else "Aucune réponse."
+            content = content if content is not None else "Aucune réponse."
             _LOGGER.info(f"[CONV] final content: {content[:200]}")
             chat_log.content.append(AssistantContent(
                 agent_id=self._attr_unique_id,
