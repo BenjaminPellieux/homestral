@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/homestral/brand/logo_dark.png">
+    <img src="custom_components/homestral/brand/logo.png" alt="HomeStral" width="480">
+  </picture>
+</p>
+
 # HomeStral — Mistral AI for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
