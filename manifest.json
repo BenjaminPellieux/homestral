@@ -12,5 +12,5 @@
                      "assist_pipeline",
                      "intent"],
     "integration_type": "service",
-    "version": "0.2.0"
+    "version": "0.2.1"
 }

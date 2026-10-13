@@ -11,12 +11,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Set up the Homestral sensor."""
     api_key = entry.data["api_key"]
     sensor = HomestralSensor(api_key)
-    _LOGGER.info(f" setup entry : {sensor} : {api_key}")
+    _LOGGER.info(f"Setup entry: {sensor.name}")
     async_add_entities([sensor], True)
 
 class HomestralSensor(Entity):
     def __init__(self, api_key):
-        _LOGGER.info(f"HomeStral sensors : {api_key=}")
+        _LOGGER.info("HomeStral sensor initialised")
         self._api_key = api_key
 
     @property

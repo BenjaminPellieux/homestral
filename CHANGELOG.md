@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-13
+
+### Fixed
+
+- **Security**: The Mistral API key is no longer logged in plaintext by `sensor.py`.
+- **Performance**: The Mistral client is now built in an executor during setup, avoiding blocking calls in the event loop (HA `homeassistant.util.loop` warnings).
+
+### Tests
+
+- Added `tests/test_sensor.py` (API key never logged) and `tests/test_init.py` (client built via executor).
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

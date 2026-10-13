@@ -49,7 +49,7 @@ def test_default_tts_model():
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.2.0"
+    assert manifest["version"] == "0.2.1"
     assert "mistralai>=3.2.0" in manifest["requirements"]
 
 
