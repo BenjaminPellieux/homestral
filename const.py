@@ -10,7 +10,18 @@ CONF_MODEL = "model"
 
 # Default values
 DEFAULT_NAME = "Homestral"
-DEFAULT_CHAT_MODEL = "mistral-medium-latest"
+# Chat model — `mistral-large-latest` tracks Mistral's newest Large release, currently
+# Mistral Large 4 (v26.10, "Le Chonk"), the flagship open-weight multimodal MoE model
+# (1M context). `mistral-large-4` is the pinned preview ID.
+DEFAULT_CHAT_MODEL = "mistral-large-latest"
+# Selectable chat models in the config flow (aliases follow the newest non-deprecated release)
+AVAILABLE_CHAT_MODELS = [
+    "mistral-large-latest",   # Mistral Large 4 (flagship, multimodal, 1M ctx)
+    "mistral-large-4",        # Mistral Large 4 — pinned preview ID
+    "mistral-medium-latest",  # Mistral Medium 3.5 (agentic / coding)
+    "mistral-small-latest",   # Mistral Small 4 (efficient hybrid)
+]
+# STT — Voxtral Mini Transcribe 2 (Voxtral 2) via /v1/audio/transcriptions
 DEFAULT_STT_MODEL = "voxtral-mini-latest"
 
 # Home automation vocabulary for Voxtral 2 context_bias

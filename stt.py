@@ -134,6 +134,11 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                 lambda: self._client.audio.transcriptions.complete(
                     model=DEFAULT_STT_MODEL,
                     file=audio_file,
+                    # Voxtral 2 context biasing — boosts home-automation vocabulary
+                    # accuracy. API requires single words (pattern ^[^,\s]+$),
+                    # see HOME_AUTOMATION_VOCAB.
+                    context_bias=HOME_AUTOMATION_VOCAB,
+                    diarize=False,
                 ),
             )
             _LOGGER.debug(

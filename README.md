@@ -9,10 +9,11 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
 
 ## Features
 
-- **Voice Control**: Use natural language to control your smart home devices
-- **AI Conversations**: Leverage Mistral's advanced language models for intelligent responses
-- **Speech-to-Text**: Integrates with Voxtral for accurate speech recognition
-- **Flexible Configuration**: Choose between Mistral agents or models
+- **Mistral Large 4 Chat**: Powered by Mistral's flagship multimodal model with a 1M context window
+- **Voice-Driven Device Control**: Control your smart home devices with natural language through tool calling (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`)
+- **Voxtral 2 Speech-to-Text**: Accurate speech recognition with home-automation context biasing, supporting 13 languages
+- **Voxtral Text-to-Speech**: Natural voice responses synthesized with Voxtral TTS
+- **Selectable Models**: Choose between Mistral Large, Medium, and Small in the config flow
 - **Customizable**: Adapt the assistant to your specific home automation needs
 - **Multi-language Support**: Works with English, French, and more
 
@@ -20,9 +21,8 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
 
 ### Prerequisites
 
-- Home Assistant (running in Docker or native)
-- Mistral AI API key
-- Python 3.9 or higher
+- Home Assistant 2025.11 or higher (requires Python 3.13+)
+- Mistral AI API key (`MISTRAL_API_KEY`) with access to the `mistral-large` and `voxtral` models
 
 ### Installation Steps
 
@@ -54,9 +54,15 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
 
 3. Configure optional settings:
    - Choose between using a Mistral agent or model
-   - Set your preferred model (default: mistral-large-latest)
+   - Select your chat model (default: `mistral-large-latest`):
+     - `mistral-large-latest` — Mistral Large 4 (flagship, multimodal, 1M context)
+     - `mistral-large-4` — Mistral Large 4 (pinned preview ID)
+     - `mistral-medium-latest` — Mistral Medium 3.5
+     - `mistral-small-latest` — Mistral Small 4
    - Configure agent ID if using an agent
    - Adjust parameters like temperature and max tokens
+
+Speech-to-text uses Voxtral 2 (Voxtral Mini Transcribe 2) and text-to-speech uses Voxtral TTS (`voxtral-mini-tts-2603`); both are set up automatically with your Mistral AI API key.
 
 ## Usage Examples
 

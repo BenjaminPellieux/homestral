@@ -4,6 +4,11 @@ Integration tests for the Mistral tool loop in MistralConversationEntity.
 These tests verify that FunctionCallEntry (control_ha_device, get_ha_state, etc.)
 flows through _async_handle_message correctly — device control is no longer done
 via a keyword parser but via the LLM tool call mechanism.
+
+The mistralai SDK layout differs between versions (mistralai.models vs
+mistralai.client.models), so tests never import model classes from the SDK:
+plain fake classes are patched into the homestral.conversation namespace, which
+is what the tool loop's isinstance() checks resolve against.
 """
 
 import json
@@ -11,145 +16,178 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
-def _make_function_call_entry(name, arguments, tool_call_id="call_001"):
-    """Build a mock FunctionCallEntry."""
-    entry = MagicMock()
-    entry.__class__.__name__ = "FunctionCallEntry"
-    entry.name = name
-    entry.arguments = json.dumps(arguments) if isinstance(arguments, dict) else arguments
-    entry.tool_call_id = tool_call_id
-    return entry
+# ---------------------------------------------------------------------------
+# Fake SDK entry classes (patched into homestral.conversation)
+# ---------------------------------------------------------------------------
+
+class FakeFunctionCallEntry:
+    """Client-side tool call requested by the model (e.g. control_ha_device)."""
+
+    def __init__(self, name, arguments, tool_call_id="call_001"):
+        self.name = name
+        self.arguments = arguments
+        self.tool_call_id = tool_call_id
 
 
-def _make_message_entry(text):
-    """Build a mock MessageOutputEntry."""
-    entry = MagicMock()
-    entry.__class__.__name__ = "MessageOutputEntry"
-    entry.content = text
-    return entry
+class FakeMessageOutputEntry:
+    """Plain text answer from the model."""
+
+    def __init__(self, content):
+        self.content = content
 
 
-def _make_tool_execution_entry(name):
-    """Build a mock ToolExecutionEntry (Mistral built-in, e.g. web_search)."""
-    entry = MagicMock()
-    entry.__class__.__name__ = "ToolExecutionEntry"
-    entry.name = name
-    entry.arguments = {}
-    return entry
+class FakeToolExecutionEntry:
+    """Built-in Mistral server-side tool execution (e.g. web_search)."""
+
+    def __init__(self, name, arguments=None):
+        self.name = name
+        self.arguments = arguments if arguments is not None else {}
 
 
-def _build_entity(hass=None):
-    """Create a MistralConversationEntity with mocked dependencies."""
+class FakeFunctionResultEntry:
+    """Result of a client-side tool call, sent back to the model."""
+
+    def __init__(self, tool_call_id, result):
+        self.tool_call_id = tool_call_id
+        self.result = result
+
+
+@pytest.fixture
+def fake_entries(monkeypatch):
+    """Patch the SDK entry classes used by the tool loop's isinstance checks."""
+    import homestral.conversation as conv_mod
+
+    monkeypatch.setattr(conv_mod, "FunctionCallEntry", FakeFunctionCallEntry)
+    monkeypatch.setattr(conv_mod, "MessageOutputEntry", FakeMessageOutputEntry)
+    monkeypatch.setattr(conv_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
+    monkeypatch.setattr(conv_mod, "FunctionResultEntry", FakeFunctionResultEntry)
+
+
+def _build_entity():
+    """Create a MistralConversationEntity with a mocked Mistral client."""
     from homestral.conversation import MistralConversationEntity
 
-    mock_hass = hass or MagicMock()
+    mock_hass = MagicMock()
     mock_entry = MagicMock()
     mock_entry.entry_id = "test_entry"
-    mock_entry.runtime_data = MagicMock()
+    mock_entry.runtime_data = MagicMock()  # client Mistral
     mock_entry.data = {
         "api_key": "test",
         "use_agent": False,
-        "model": "mistral-medium-latest",
     }
-    entity = MistralConversationEntity(mock_hass, mock_entry)
-    return entity
+    return MistralConversationEntity(mock_hass, mock_entry)
+
+
+def _make_chat_log():
+    chat_log = MagicMock()
+    chat_log.content = []
+    return chat_log
+
+
+def _make_user_input(text):
+    user_input = MagicMock()
+    user_input.text = text
+    return user_input
+
+
+def _patch_conversation_deps():
+    """Patch build_ha_context and the chat-log result helper."""
+    return (
+        patch("homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
+        patch("homestral.conversation.conversation.async_get_result_from_chat_log", return_value=MagicMock()),
+    )
 
 
 @pytest.mark.asyncio
-async def test_tool_loop_control_ha_device():
+async def test_tool_loop_control_ha_device(fake_entries):
     """
-    When Mistral returns a FunctionCallEntry for control_ha_device, the executor
-    is called and the model's follow-up MessageOutputEntry is returned to the user.
+    User: "Allume la lumière du salon" -> the model answers with a
+    control_ha_device FunctionCallEntry -> the executor runs the tool ->
+    the result is appended to the conversation -> the model's follow-up
+    MessageOutputEntry is returned to the user.
     """
-    from mistralai.models import FunctionCallEntry, MessageOutputEntry, ToolExecutionEntry
-
     entity = _build_entity()
 
     # First API response: FunctionCallEntry asking to turn on the light
-    func_call = _make_function_call_entry(
+    func_call = FakeFunctionCallEntry(
         "control_ha_device",
-        {"entity_id": "light.salon", "command": "turn_on"},
+        json.dumps({"entity_id": "light.salon", "command": "turn_on"}),
+        tool_call_id="call_001",
     )
     first_response = MagicMock()
     first_response.conversation_id = "conv_001"
     first_response.outputs = [func_call]
 
-    # Tool executor succeeds
-    tool_result_json = json.dumps({"success": True, "entity_id": "light.salon", "command": "turn_on"})
-
     # Second API response: model confirms the action
-    msg_entry = _make_message_entry("J'ai allumé la lumière du salon.")
     second_response = MagicMock()
     second_response.conversation_id = "conv_001"
-    second_response.outputs = [msg_entry]
+    second_response.outputs = [FakeMessageOutputEntry("J'ai allumé la lumière du salon.")]
 
     entity._client.beta.conversations.start_async = AsyncMock(return_value=first_response)
     entity._client.beta.conversations.append_async = AsyncMock(return_value=second_response)
 
-    with patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec, \
-         patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
-         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        mock_exec.return_value = tool_result_json
-        mock_result.return_value = MagicMock()
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch, \
+         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = json.dumps({
+            "success": True,
+            "entity_id": "light.salon",
+            "command": "turn_on",
+        })
 
-        # Patch isinstance checks to use our mocks
-        import homestral.conversation as conv_mod
-        with patch.object(conv_mod, "FunctionCallEntry", type(func_call)), \
-             patch.object(conv_mod, "MessageOutputEntry", type(msg_entry)):
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(
+            _make_user_input("Allume la lumière du salon"), chat_log
+        )
 
-            chat_log = MagicMock()
-            chat_log.content = []
-            user_input = MagicMock()
-            user_input.text = "Allume la lumière du salon"
-
-            await entity._async_handle_message(user_input, chat_log)
-
+    # The tool was executed with the parsed arguments
     mock_exec.assert_called_once_with(
         "control_ha_device",
         {"entity_id": "light.salon", "command": "turn_on"},
     )
+
+    # The tool result was sent back to the conversation
+    entity._client.beta.conversations.append_async.assert_called_once()
+    append_kwargs = entity._client.beta.conversations.append_async.call_args.kwargs
+    assert append_kwargs["conversation_id"] == "conv_001"
+    result_entries = append_kwargs["inputs"]
+    assert len(result_entries) == 1
+    assert isinstance(result_entries[0], FakeFunctionResultEntry)
+    assert result_entries[0].tool_call_id == "call_001"
+    assert json.loads(result_entries[0].result)["success"] is True
+
+    # The conversation continues and the final answer reaches the chat log
+    assert entity._conversation_id == "conv_001"
     assert len(chat_log.content) == 1
     assert "allumé" in chat_log.content[0].content.lower()
 
 
 @pytest.mark.asyncio
-async def test_tool_loop_direct_message_no_tool():
+async def test_tool_loop_direct_message_no_tool(fake_entries):
     """
     When Mistral answers directly (MessageOutputEntry, no tool call), the content
-    is appended to the chat log unchanged.
+    is appended to the chat log unchanged and no tool result is sent back.
     """
-    from mistralai.models import FunctionCallEntry, MessageOutputEntry
-
     entity = _build_entity()
 
-    msg_entry = _make_message_entry("Bonjour, comment puis-je vous aider ?")
     response = MagicMock()
     response.conversation_id = "conv_002"
-    response.outputs = [msg_entry]
+    response.outputs = [FakeMessageOutputEntry("Bonjour, comment puis-je vous aider ?")]
 
     entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
 
-    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
-         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        mock_result.return_value = MagicMock()
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch:
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(_make_user_input("Bonjour"), chat_log)
 
-        import homestral.conversation as conv_mod
-        with patch.object(conv_mod, "FunctionCallEntry", type(MagicMock())), \
-             patch.object(conv_mod, "MessageOutputEntry", type(msg_entry)):
-
-            chat_log = MagicMock()
-            chat_log.content = []
-            user_input = MagicMock()
-            user_input.text = "Bonjour"
-
-            await entity._async_handle_message(user_input, chat_log)
-
+    entity._client.beta.conversations.append_async.assert_not_called()
     assert len(chat_log.content) == 1
-    assert "Bonjour" in chat_log.content[0].content
+    assert chat_log.content[0].content == "Bonjour, comment puis-je vous aider ?"
 
 
 @pytest.mark.asyncio
-async def test_tool_loop_empty_outputs_returns_default_message():
+async def test_tool_loop_empty_outputs_returns_default_message(fake_entries):
     """An empty outputs list results in the fallback 'no response' message."""
     entity = _build_entity()
 
@@ -159,23 +197,17 @@ async def test_tool_loop_empty_outputs_returns_default_message():
 
     entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
 
-    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
-         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        mock_result.return_value = MagicMock()
-
-        chat_log = MagicMock()
-        chat_log.content = []
-        user_input = MagicMock()
-        user_input.text = "Test vide"
-
-        await entity._async_handle_message(user_input, chat_log)
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch:
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(_make_user_input("Test vide"), chat_log)
 
     assert len(chat_log.content) == 1
-    assert chat_log.content[0].content  # some fallback message
+    assert chat_log.content[0].content == "Désolé, je n'ai pas reçu de réponse."
 
 
 @pytest.mark.asyncio
-async def test_tool_loop_api_exception_resets_conversation():
+async def test_tool_loop_api_exception_resets_conversation(fake_entries):
     """An API exception appends an error message and resets the conversation ID."""
     entity = _build_entity()
     entity._conversation_id = "existing_conv"
@@ -184,20 +216,46 @@ async def test_tool_loop_api_exception_resets_conversation():
         side_effect=RuntimeError("API down")
     )
 
-    with patch("homestral.conversation.conversation.async_get_result_from_chat_log") as mock_result, \
-         patch("homestral.tools.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        mock_result.return_value = MagicMock()
-
-        chat_log = MagicMock()
-        chat_log.content = []
-        user_input = MagicMock()
-        user_input.text = "Quelle heure est-il ?"
-
-        await entity._async_handle_message(user_input, chat_log)
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch:
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(
+            _make_user_input("Quelle heure est-il ?"), chat_log
+        )
 
     assert entity._conversation_id is None
     assert len(chat_log.content) == 1
     assert "Error" in chat_log.content[0].content
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_builtin_tool_execution(fake_entries):
+    """
+    A ToolExecutionEntry (built-in Mistral server-side tool such as web_search)
+    is not executed client-side: the text of the following MessageOutputEntry
+    is returned directly.
+    """
+    entity = _build_entity()
+
+    response = MagicMock()
+    response.conversation_id = "conv_004"
+    response.outputs = [
+        FakeToolExecutionEntry("web_search", {"q": "météo Paris"}),
+        FakeMessageOutputEntry("Il fait beau à Paris."),
+    ]
+
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
+
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch, \
+         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(_make_user_input("Quel temps fait-il ?"), chat_log)
+
+    mock_exec.assert_not_called()
+    entity._client.beta.conversations.append_async.assert_not_called()
+    assert len(chat_log.content) == 1
+    assert chat_log.content[0].content == "Il fait beau à Paris."
 
 
 if __name__ == "__main__":

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-10-13
+
+### Changed
+
+- **Chat Model**: The default chat model is now `mistral-large-latest` (Mistral Large 4, 1M context window, multimodal).
+- **Dependencies**: The `mistralai` package is now required at version `>=3.2.0`.
+- **Speech-to-Text**: STT upgraded to Voxtral 2 (Voxtral Mini Transcribe 2 via `/v1/audio/transcriptions`) with home-automation context biasing and 13 supported languages.
+
+### Added
+
+- **Selectable Chat Model**: The config flow now lets you choose the chat model: `mistral-large-latest`, `mistral-large-4`, `mistral-medium-latest`, or `mistral-small-latest`.
+- **Voxtral TTS**: Added a text-to-speech platform using Voxtral TTS (`voxtral-mini-tts-2603` via `/v1/audio/speech`).
+- **Tool Calling**: Added FunctionTools for Home Assistant control (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with automatic Home Assistant context injection into conversations.
+
 ## [0.0.2] - 2023-11-01
 
 ### Added
