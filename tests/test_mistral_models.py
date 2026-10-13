@@ -11,9 +11,13 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+import yaml
+
 from homestral import const
 
 MANIFEST_PATH = Path(__file__).parent.parent / "manifest.json"
+CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_sentences"
 
 EXPECTED_CHAT_MODELS = {
     "mistral-large-latest",   # Mistral Large 4 (flagship)
@@ -45,7 +49,7 @@ def test_default_tts_model():
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.1.0"
+    assert manifest["version"] == "0.2.0"
     assert "mistralai>=3.2.0" in manifest["requirements"]
 
 
@@ -60,6 +64,31 @@ def test_home_automation_vocab_single_word_constraint():
         )
 
 
+@pytest.mark.parametrize("lang", ["fr", "en"])
+def test_custom_sentences_yaml_structure(lang):
+    """Les custom sentences HomestralQuery sont valides (intents + wildcard).
+
+    Fichiers à copier dans <config>/custom_sentences/<lang>/ pour activer la
+    voix : intent HomestralQuery avec des phrases non vides qui capturent le
+    slot wildcard {query}.
+    """
+    path = CUSTOM_SENTENCES_DIR / f"{lang}.yaml"
+    assert path.is_file(), f"missing custom sentences file: {path}"
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    assert data["language"] == lang
+    intent_data = data["intents"]["HomestralQuery"]["data"]
+    assert isinstance(intent_data, list) and intent_data
+    for entry in intent_data:
+        assert isinstance(entry, dict)
+        sentences = entry["sentences"]
+        assert isinstance(sentences, list) and sentences
+        for sentence in sentences:
+            assert isinstance(sentence, str) and sentence
+            assert "{query}" in sentence
+    assert data["lists"]["query"]["wildcard"] is True
+
+
 if __name__ == "__main__":
-    import pytest
     pytest.main([__file__])

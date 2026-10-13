@@ -7,15 +7,77 @@ donc les parametres envoyes a ``client.beta.conversations.start_async``
 (model, tools, instructions, agent_id) en patchant ``build_ha_context``.
 """
 
+import json
+
 import pytest
+import voluptuous as vol
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import MATCH_ALL
 
 from homestral.conversation import MistralConversationEntity
-from homestral.const import CONF_AGENT_ID, CONF_MODEL, CONF_USE_AGENT, DEFAULT_CHAT_MODEL
+from homestral.const import (
+    CONF_AGENT_ID,
+    CONF_MAX_TOOL_ITERATIONS,
+    CONF_MODEL,
+    CONF_USE_AGENT,
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_MAX_TOOL_ITERATIONS,
+    MAX_TOOL_ITERATIONS,
+    MIN_TOOL_ITERATIONS,
+)
 from homestral.errors import ConversationError
 from homestral.tools import ALL_TOOLS
+
+
+# ---------------------------------------------------------------------------
+# Fake SDK entry classes (patched into homestral.conversation)
+# ---------------------------------------------------------------------------
+
+class FakeFunctionCallEntry:
+    """Client-side tool call requested by the model (e.g. control_ha_device)."""
+
+    def __init__(self, name, arguments, tool_call_id="call_001"):
+        self.name = name
+        self.arguments = arguments
+        self.tool_call_id = tool_call_id
+
+
+class FakeMessageOutputEntry:
+    """Plain text answer from the model."""
+
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeToolExecutionEntry:
+    """Built-in Mistral server-side tool execution (e.g. web_search)."""
+
+    def __init__(self, name, arguments=None):
+        self.name = name
+        self.arguments = arguments if arguments is not None else {}
+
+
+class FakeFunctionResultEntry:
+    """Result of a client-side tool call, sent back to the model."""
+
+    def __init__(self, tool_call_id, result):
+        self.tool_call_id = tool_call_id
+        self.result = result
+
+
+@pytest.fixture
+def fake_entries(monkeypatch):
+    """Patch the SDK entry classes used by the tool loop's isinstance checks."""
+    import homestral.conversation as conv_mod
+
+    monkeypatch.setattr(conv_mod, "FunctionCallEntry", FakeFunctionCallEntry)
+    monkeypatch.setattr(conv_mod, "MessageOutputEntry", FakeMessageOutputEntry)
+    monkeypatch.setattr(conv_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
+    monkeypatch.setattr(conv_mod, "FunctionResultEntry", FakeFunctionResultEntry)
+
+
+TOO_MANY_STEPS_MESSAGE = "La réponse a nécessité trop d'étapes. Veuillez reformuler."
 
 
 def _build_entity(entry_data=None):
@@ -138,6 +200,92 @@ async def test_keep_conversation_appends_to_existing_conversation():
     assert kwargs["conversation_id"] == "conv_abc"
     assert kwargs["inputs"] == "Et la météo ?"
     assert kwargs["completion_args"] == {"instructions": "ctx"}
+
+
+async def _run_endless_tool_loop(entity):
+    """Drive _async_handle_message with a model that requests a tool call at
+    every turn and never produces a final text answer."""
+    func_call = FakeFunctionCallEntry(
+        "control_ha_device",
+        json.dumps({"entity_id": "light.salon", "command": "turn_on"}),
+        tool_call_id="call_001",
+    )
+    loop_response = MagicMock()
+    loop_response.conversation_id = "conv_loop"
+    loop_response.outputs = [func_call]
+
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=loop_response)
+    entity._client.beta.conversations.append_async = AsyncMock(return_value=loop_response)
+
+    chat_log = MagicMock()
+    chat_log.content = []
+
+    with patch("homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"), \
+         patch("homestral.conversation.conversation.async_get_result_from_chat_log", return_value=MagicMock()), \
+         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = json.dumps({
+            "success": True,
+            "entity_id": "light.salon",
+            "command": "turn_on",
+        })
+        await entity._async_handle_message(
+            _make_user_input("Allume la lumière du salon"), chat_log
+        )
+
+    return chat_log, mock_exec
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_uses_default_max_iterations(fake_entries):
+    """Entry sans max_tool_iterations : la boucle tourne DEFAULT_MAX_TOOL_ITERATIONS fois."""
+    entity = _build_entity()  # pas de cle max_tool_iterations -> defaut
+
+    chat_log, mock_exec = await _run_endless_tool_loop(entity)
+
+    assert mock_exec.call_count == DEFAULT_MAX_TOOL_ITERATIONS
+    assert entity._client.beta.conversations.append_async.call_count == DEFAULT_MAX_TOOL_ITERATIONS
+    assert len(chat_log.content) == 1
+    assert chat_log.content[0].content == TOO_MANY_STEPS_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_respects_configured_max_iterations(fake_entries):
+    """Entry avec max_tool_iterations=2 : la boucle s'arrete apres 2 iterations
+    et l'utilisateur recoit le message 'trop d'étapes'."""
+    entity = _build_entity({
+        "api_key": "test",
+        CONF_USE_AGENT: False,
+        CONF_MAX_TOOL_ITERATIONS: 2,
+    })
+
+    chat_log, mock_exec = await _run_endless_tool_loop(entity)
+
+    assert mock_exec.call_count == 2
+    assert entity._client.beta.conversations.append_async.call_count == 2
+    assert len(chat_log.content) == 1
+    assert chat_log.content[0].content == TOO_MANY_STEPS_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_config_flow_max_tool_iterations_schema_bounds():
+    """Le schema du config flow borne max_tool_iterations entre MIN et MAX."""
+    from homestral.config_flow import HomestralConfigFlow
+
+    flow = HomestralConfigFlow()
+    result = await flow.async_step_user(None)
+    schema = result["data_schema"]
+
+    base = {"api_key": "test"}
+    # Valeur par defaut quand le champ est absent
+    assert schema(base)[CONF_MAX_TOOL_ITERATIONS] == DEFAULT_MAX_TOOL_ITERATIONS
+    # Bornes acceptees
+    assert schema({**base, CONF_MAX_TOOL_ITERATIONS: MIN_TOOL_ITERATIONS})[CONF_MAX_TOOL_ITERATIONS] == MIN_TOOL_ITERATIONS
+    assert schema({**base, CONF_MAX_TOOL_ITERATIONS: MAX_TOOL_ITERATIONS})[CONF_MAX_TOOL_ITERATIONS] == MAX_TOOL_ITERATIONS
+    # Hors bornes rejetees
+    with pytest.raises(vol.Invalid):
+        schema({**base, CONF_MAX_TOOL_ITERATIONS: 0})
+    with pytest.raises(vol.Invalid):
+        schema({**base, CONF_MAX_TOOL_ITERATIONS: 11})
 
 
 if __name__ == "__main__":

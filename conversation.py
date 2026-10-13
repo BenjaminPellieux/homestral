@@ -143,10 +143,11 @@ class MistralConversationEntity(
             else:
                 response = await self.keep_conversation(user_input)
                   
-            # Tool execution loop (max 5 iterations)
+            # Tool execution loop (bounded by the configured max iterations)
             self._conversation_id = getattr(response, "conversation_id", None)
             content = None
-            for iteration in range(5):
+            max_iterations = int(self._entry.data.get(CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS))
+            for iteration in range(max_iterations):
                 if not response.outputs:
                     content = "Désolé, je n'ai pas reçu de réponse."
                     break

@@ -14,6 +14,8 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
 - **Voxtral 2 Speech-to-Text**: Accurate speech recognition with home-automation context biasing, supporting 13 languages
 - **Voxtral Text-to-Speech**: Natural voice responses synthesized with Voxtral TTS
 - **Selectable Models**: Choose between Mistral Large, Medium, and Small in the config flow
+- **Configurable Tool Loop**: Bound the number of tool-call iterations per conversation turn (`max_tool_iterations`, default 5)
+- **Direct Voice Queries**: Ask Homestral directly ("Demande à Homestral ...") through the `HomestralQuery` intent and shipped custom sentences
 - **Customizable**: Adapt the assistant to your specific home automation needs
 - **Multi-language Support**: Works with English, French, and more
 
@@ -60,6 +62,7 @@ HomeStral is a powerful integration that brings Mistral AI capabilities to Home 
      - `mistral-medium-latest` — Mistral Medium 3.5
      - `mistral-small-latest` — Mistral Small 4
    - Configure agent ID if using an agent
+   - Set the maximum tool-call iterations per turn (`max_tool_iterations`, default: 5, range: 1–10)
    - Adjust parameters like temperature and max tokens
 
 Speech-to-text uses Voxtral 2 (Voxtral Mini Transcribe 2) and text-to-speech uses Voxtral TTS (`voxtral-mini-tts-2603`); both are set up automatically with your Mistral AI API key.
@@ -78,6 +81,25 @@ Speech-to-text uses Voxtral 2 (Voxtral Mini Transcribe 2) and text-to-speech use
 - "Why is my energy usage higher than usual?"
 - "Can you suggest ways to optimize my smart home setup?"
 - "What's the weather forecast for tomorrow?"
+
+### Direct Voice Queries (HomestralQuery Intent)
+
+Homestral ships a `HomestralQuery` intent so you can talk to it directly:
+
+- "Demande à Homestral quelle est la météo"
+- "Ask Homestral what the weather is"
+
+The free text is forwarded to the Mistral conversation, which can control your devices through tool calling, and the answer is spoken back.
+
+To enable it, copy the shipped custom sentences into your Home Assistant configuration:
+
+```bash
+mkdir -p /path/to/homeassistant/config/custom_sentences/fr /path/to/homeassistant/config/custom_sentences/en
+cp custom_sentences/fr.yaml /path/to/homeassistant/config/custom_sentences/fr/homestral.yaml
+cp custom_sentences/en.yaml /path/to/homeassistant/config/custom_sentences/en/homestral.yaml
+```
+
+Then restart Home Assistant (or reload the conversation integration). The sentences capture the free text in the `{query}` wildcard slot.
 
 ## Customization
 

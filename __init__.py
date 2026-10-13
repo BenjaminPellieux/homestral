@@ -1,5 +1,5 @@
 # HomeStral package initialization
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-13
+
+### Added
+
+- **Configurable Tool Loop**: New `max_tool_iterations` config flow option bounding the number of tool-call iterations per conversation turn (default: 5, range: 1–10).
+- **HomestralQuery Intent**: New `HomestralQuery` intent (`intent.py`) for direct voice queries such as "Demande à Homestral ..." — the free-text query is sent to the Mistral conversation (same tool-calling loop) and the answer is spoken back.
+- **Custom Sentences**: Shipped `custom_sentences/fr.yaml` and `custom_sentences/en.yaml` (wildcard `{query}` slot) to enable the voice entry point — copy them to `<config>/custom_sentences/<lang>/homestral.yaml` and restart Home Assistant.
+
+### Tests
+
+- Test suite extended from 39 to 55 tests: tool-loop bounds and config flow schema validation, intent handler paths (service, fallback, errors), custom sentences YAML validation, and hassil recognition of the shipped sentences.
+
 ## [0.1.0] - 2026-10-13
 
 ### Changed

@@ -1,0 +1,21 @@
+# Custom sentences for the HomestralQuery intent (English).
+#
+# Copy this file to <config>/custom_sentences/en/homestral.yaml and restart
+# Home Assistant (or reload the conversation integration) to enable voice
+# commands such as "Ask Homestral what the weather is".
+#
+# hassil syntax: {query} references the wildcard list declared below —
+# <query> would be parsed as an expansion rule reference and fail.
+language: "en"
+intents:
+  HomestralQuery:
+    data:
+      - sentences:
+          - "ask Homestral {query}"
+          - "ask Homestral to {query}"
+          - "tell Homestral {query}"
+          - "tell Homestral to {query}"
+          - "Homestral {query}"
+lists:
+  query:
+    wildcard: true

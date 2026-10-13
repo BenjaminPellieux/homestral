@@ -1,0 +1,21 @@
+# Custom sentences for the HomestralQuery intent (French).
+#
+# Copy this file to <config>/custom_sentences/fr/homestral.yaml and restart
+# Home Assistant (or reload the conversation integration) to enable voice
+# commands such as "Demande à Homestral quelle est la météo".
+#
+# hassil syntax: {query} references the wildcard list declared below —
+# <query> would be parsed as an expansion rule reference and fail.
+language: "fr"
+intents:
+  HomestralQuery:
+    data:
+      - sentences:
+          - "demande à Homestral {query}"
+          - "demande à Homestral de {query}"
+          - "dis à Homestral {query}"
+          - "dis à Homestral de {query}"
+          - "homestral {query}"
+lists:
+  query:
+    wildcard: true

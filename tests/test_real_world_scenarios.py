@@ -63,7 +63,7 @@ def fake_entries(monkeypatch):
     monkeypatch.setattr(conv_mod, "FunctionResultEntry", FakeFunctionResultEntry)
 
 
-def _build_entity():
+def _build_entity(entry_data=None):
     """Create a MistralConversationEntity with a mocked Mistral client."""
     from homestral.conversation import MistralConversationEntity
 
@@ -71,7 +71,7 @@ def _build_entity():
     mock_entry = MagicMock()
     mock_entry.entry_id = "test_entry"
     mock_entry.runtime_data = MagicMock()  # client Mistral
-    mock_entry.data = {
+    mock_entry.data = entry_data if entry_data is not None else {
         "api_key": "test",
         "use_agent": False,
     }
@@ -256,6 +256,59 @@ async def test_tool_loop_builtin_tool_execution(fake_entries):
     entity._client.beta.conversations.append_async.assert_not_called()
     assert len(chat_log.content) == 1
     assert chat_log.content[0].content == "Il fait beau à Paris."
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_stops_at_configured_max_iterations(fake_entries):
+    """
+    Scenario: the entry is configured with max_tool_iterations=1 and the model
+    keeps requesting the control_ha_device tool. The loop stops after a single
+    tool iteration and the final assistant message is the too-many-steps
+    fallback.
+    """
+    entity = _build_entity({
+        "api_key": "test",
+        "use_agent": False,
+        "max_tool_iterations": 1,
+    })
+
+    # The model answers with a tool call at every turn, forever
+    func_call = FakeFunctionCallEntry(
+        "control_ha_device",
+        json.dumps({"entity_id": "light.salon", "command": "turn_on"}),
+        tool_call_id="call_001",
+    )
+    loop_response = MagicMock()
+    loop_response.conversation_id = "conv_005"
+    loop_response.outputs = [func_call]
+
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=loop_response)
+    entity._client.beta.conversations.append_async = AsyncMock(return_value=loop_response)
+
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch, \
+         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = json.dumps({
+            "success": True,
+            "entity_id": "light.salon",
+            "command": "turn_on",
+        })
+
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(
+            _make_user_input("Allume la lumière du salon"), chat_log
+        )
+
+    # Exactly one tool iteration despite the model asking again
+    mock_exec.assert_called_once_with(
+        "control_ha_device",
+        {"entity_id": "light.salon", "command": "turn_on"},
+    )
+    entity._client.beta.conversations.append_async.assert_called_once()
+
+    # The user gets the too-many-steps fallback message
+    assert len(chat_log.content) == 1
+    assert chat_log.content[0].content == "La réponse a nécessité trop d'étapes. Veuillez reformuler."
 
 
 if __name__ == "__main__":

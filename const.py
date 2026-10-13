@@ -6,10 +6,15 @@ CONF_API_KEY = "api_key"
 CONF_USE_AGENT = "use_agent"
 CONF_AGENT_ID = "agent_id"
 CONF_MODEL = "model"
+CONF_MAX_TOOL_ITERATIONS = "max_tool_iterations"
 
 
 # Default values
 DEFAULT_NAME = "Homestral"
+# Tool loop — max number of tool-call iterations per conversation turn
+DEFAULT_MAX_TOOL_ITERATIONS = 5
+MIN_TOOL_ITERATIONS = 1
+MAX_TOOL_ITERATIONS = 10
 # Chat model — `mistral-large-latest` tracks Mistral's newest Large release, currently
 # Mistral Large 4 (v26.10, "Le Chonk"), the flagship open-weight multimodal MoE model
 # (1M context). `mistral-large-4` is the pinned preview ID.

@@ -24,6 +24,7 @@ class HomestralConfigFlow(config_entries.ConfigFlow, domain="homestral"):
                 vol.Required(CONF_API_KEY): str,
                 vol.Optional(CONF_USE_AGENT, default=False): bool,
                 vol.Optional(CONF_AGENT_ID, default=""): str, # type: ignore
-                vol.Optional(CONF_MODEL, default=DEFAULT_CHAT_MODEL): vol.In(AVAILABLE_CHAT_MODELS)
+                vol.Optional(CONF_MODEL, default=DEFAULT_CHAT_MODEL): vol.In(AVAILABLE_CHAT_MODELS),
+                vol.Optional(CONF_MAX_TOOL_ITERATIONS, default=DEFAULT_MAX_TOOL_ITERATIONS): vol.All(vol.Coerce(int), vol.Range(min=MIN_TOOL_ITERATIONS, max=MAX_TOOL_ITERATIONS))
             })
         )
