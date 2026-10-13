@@ -7,16 +7,20 @@ DeviceController recupere les registres via
 ``homestral.api_control.er.async_get`` / ``homestral.api_control.dr.async_get``.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from homestral.api_control import DeviceController
-from homestral.errors import APIError
+
+import pytest
+
+from custom_components.homestral.api_control import DeviceController
+from custom_components.homestral.errors import APIError
 
 
 def _make_controller(mock_hass, entity_registry=None, device_registry=None):
     """Instancie un DeviceController avec des registres mockes."""
-    with patch("homestral.api_control.er.async_get", return_value=entity_registry), \
-         patch("homestral.api_control.dr.async_get", return_value=device_registry):
+    with (
+        patch("custom_components.homestral.api_control.er.async_get", return_value=entity_registry),
+        patch("custom_components.homestral.api_control.dr.async_get", return_value=device_registry),
+    ):
         return DeviceController(mock_hass)
 
 
@@ -55,14 +59,14 @@ async def test_get_device_info_entity():
 
     result = await controller.get_device_info("light.test_light")
 
-    assert result['type'] == 'entity'
-    assert result['entity_id'] == "light.test_light"
-    assert result['device_id'] == "test_device"
-    assert result['name'] == "Test Light"
-    assert result['platform'] == "light"
-    assert result['capabilities']['state'] == 'on'
-    assert set(result['capabilities']['attributes']) == {"brightness", "color_temp"}
-    assert 'turn_on' in result['capabilities']['supported_commands']
+    assert result["type"] == "entity"
+    assert result["entity_id"] == "light.test_light"
+    assert result["device_id"] == "test_device"
+    assert result["name"] == "Test Light"
+    assert result["platform"] == "light"
+    assert result["capabilities"]["state"] == "on"
+    assert set(result["capabilities"]["attributes"]) == {"brightness", "color_temp"}
+    assert "turn_on" in result["capabilities"]["supported_commands"]
 
 
 @pytest.mark.asyncio
@@ -79,12 +83,12 @@ async def test_get_device_info_device():
 
     result = await controller.get_device_info("test_device_id")
 
-    assert result['type'] == 'device'
-    assert result['device_id'] == "test_device_id"
-    assert result['name'] == "Test Device"
-    assert result['manufacturer'] == "Test Manufacturer"
-    assert result['model'] == "Test Model"
-    assert result['entities'] == ["test_entry"]
+    assert result["type"] == "device"
+    assert result["device_id"] == "test_device_id"
+    assert result["name"] == "Test Device"
+    assert result["manufacturer"] == "Test Manufacturer"
+    assert result["model"] == "Test Model"
+    assert result["entities"] == ["test_entry"]
 
 
 @pytest.mark.asyncio
@@ -125,10 +129,10 @@ async def test_control_light():
 
     result = await controller.control_device("light.test_light", "turn_on", {})
 
-    mock_service_call.assert_called_once_with('light', 'turn_on', {'entity_id': 'light.test_light'})
-    assert result['success'] is True
-    assert result['entity_id'] == "light.test_light"
-    assert result['command'] == "turn_on"
+    mock_service_call.assert_called_once_with("light", "turn_on", {"entity_id": "light.test_light"})
+    assert result["success"] is True
+    assert result["entity_id"] == "light.test_light"
+    assert result["command"] == "turn_on"
 
 
 @pytest.mark.asyncio
@@ -136,9 +140,7 @@ async def test_control_device_unsupported_domain():
     """Test controlling a device with unsupported domain."""
     mock_hass = MagicMock()
     mock_entity_registry = MagicMock()
-    mock_entity_registry.async_get.return_value = _make_entity_entry(
-        name="Test Sensor", platform="sensor"
-    )
+    mock_entity_registry.async_get.return_value = _make_entity_entry(name="Test Sensor", platform="sensor")
 
     mock_state = MagicMock()
     mock_state.state = "on"
@@ -158,9 +160,7 @@ async def test_control_device_missing_parameter():
     """Test controlling a device with missing required parameter."""
     mock_hass = MagicMock()
     mock_entity_registry = MagicMock()
-    mock_entity_registry.async_get.return_value = _make_entity_entry(
-        name="Test Climate", platform="climate"
-    )
+    mock_entity_registry.async_get.return_value = _make_entity_entry(name="Test Climate", platform="climate")
 
     mock_state = MagicMock()
     mock_state.state = "on"

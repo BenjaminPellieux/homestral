@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from homestral.sensor import HomestralSensor, async_setup_entry
+from custom_components.homestral.sensor import HomestralSensor, async_setup_entry
 
 SECRET = "sk-test-secret-key-123"
 

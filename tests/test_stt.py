@@ -7,12 +7,13 @@ Le provider Voxtral essaie d'abord l'API Transcribe 2
 Mistral et verifient les deux chemins.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from homeassistant.components import stt
 
-from homestral.const import DEFAULT_STT_MODEL, HOME_AUTOMATION_VOCAB
-from homestral.stt import VoxtralSttProvider
+from custom_components.homestral.const import DEFAULT_STT_MODEL, HOME_AUTOMATION_VOCAB
+from custom_components.homestral.stt import VoxtralSttProvider
 
 
 def _make_provider():
@@ -47,9 +48,7 @@ async def test_async_process_audio_stream_v2_success():
     mock_response.text = "Allume la lumière du salon"
     provider._client.audio.transcriptions.complete = MagicMock(return_value=mock_response)
 
-    result = await provider.async_process_audio_stream(
-        _make_metadata(), _audio_stream(AUDIO_CHUNK)
-    )
+    result = await provider.async_process_audio_stream(_make_metadata(), _audio_stream(AUDIO_CHUNK))
 
     assert result.text == "Allume la lumière du salon"
     assert result.result == stt.SpeechResultState.SUCCESS
@@ -83,9 +82,7 @@ async def test_async_process_audio_stream_v1_fallback():
     v1_response.choices[0].message.content = "Éteins la lumière"
     provider._client.chat.complete = MagicMock(return_value=v1_response)
 
-    result = await provider.async_process_audio_stream(
-        _make_metadata(), _audio_stream(AUDIO_CHUNK)
-    )
+    result = await provider.async_process_audio_stream(_make_metadata(), _audio_stream(AUDIO_CHUNK))
 
     assert result.text == "Éteins la lumière"
     assert result.result == stt.SpeechResultState.SUCCESS
@@ -104,14 +101,10 @@ async def test_async_process_audio_stream_v1_fallback():
 async def test_async_process_audio_stream_error():
     """Les erreurs API V2 et V1 propagated -> resultat ERROR."""
     provider = _make_provider()
-    provider._client.audio.transcriptions.complete = MagicMock(
-        side_effect=Exception("API Error")
-    )
+    provider._client.audio.transcriptions.complete = MagicMock(side_effect=Exception("API Error"))
     provider._client.chat.complete = MagicMock(side_effect=Exception("API Error"))
 
-    result = await provider.async_process_audio_stream(
-        _make_metadata(), _audio_stream(AUDIO_CHUNK)
-    )
+    result = await provider.async_process_audio_stream(_make_metadata(), _audio_stream(AUDIO_CHUNK))
 
     assert result.text is None
     assert result.result == stt.SpeechResultState.ERROR
@@ -122,9 +115,7 @@ async def test_async_process_audio_stream_empty_stream():
     """Un flux audio vide -> resultat ERROR sans appel API."""
     provider = _make_provider()
 
-    result = await provider.async_process_audio_stream(
-        _make_metadata(), _audio_stream()
-    )
+    result = await provider.async_process_audio_stream(_make_metadata(), _audio_stream())
 
     assert result.text is None
     assert result.result == stt.SpeechResultState.ERROR

@@ -12,13 +12,14 @@ is what the tool loop's isinstance() checks resolve against.
 """
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Fake SDK entry classes (patched into homestral.conversation)
 # ---------------------------------------------------------------------------
+
 
 class FakeFunctionCallEntry:
     """Client-side tool call requested by the model (e.g. control_ha_device)."""
@@ -55,7 +56,7 @@ class FakeFunctionResultEntry:
 @pytest.fixture
 def fake_entries(monkeypatch):
     """Patch the SDK entry classes used by the tool loop's isinstance checks."""
-    import homestral.conversation as conv_mod
+    import custom_components.homestral.conversation as conv_mod
 
     monkeypatch.setattr(conv_mod, "FunctionCallEntry", FakeFunctionCallEntry)
     monkeypatch.setattr(conv_mod, "MessageOutputEntry", FakeMessageOutputEntry)
@@ -65,16 +66,20 @@ def fake_entries(monkeypatch):
 
 def _build_entity(entry_data=None):
     """Create a MistralConversationEntity with a mocked Mistral client."""
-    from homestral.conversation import MistralConversationEntity
+    from custom_components.homestral.conversation import MistralConversationEntity
 
     mock_hass = MagicMock()
     mock_entry = MagicMock()
     mock_entry.entry_id = "test_entry"
     mock_entry.runtime_data = MagicMock()  # client Mistral
-    mock_entry.data = entry_data if entry_data is not None else {
-        "api_key": "test",
-        "use_agent": False,
-    }
+    mock_entry.data = (
+        entry_data
+        if entry_data is not None
+        else {
+            "api_key": "test",
+            "use_agent": False,
+        }
+    )
     return MistralConversationEntity(mock_hass, mock_entry)
 
 
@@ -93,8 +98,11 @@ def _make_user_input(text):
 def _patch_conversation_deps():
     """Patch build_ha_context and the chat-log result helper."""
     return (
-        patch("homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
-        patch("homestral.conversation.conversation.async_get_result_from_chat_log", return_value=MagicMock()),
+        patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
+        patch(
+            "custom_components.homestral.conversation.conversation.async_get_result_from_chat_log",
+            return_value=MagicMock(),
+        ),
     )
 
 
@@ -127,18 +135,17 @@ async def test_tool_loop_control_ha_device(fake_entries):
     entity._client.beta.conversations.append_async = AsyncMock(return_value=second_response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, \
-         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
-        mock_exec.return_value = json.dumps({
-            "success": True,
-            "entity_id": "light.salon",
-            "command": "turn_on",
-        })
+    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = json.dumps(
+            {
+                "success": True,
+                "entity_id": "light.salon",
+                "command": "turn_on",
+            }
+        )
 
         chat_log = _make_chat_log()
-        await entity._async_handle_message(
-            _make_user_input("Allume la lumière du salon"), chat_log
-        )
+        await entity._async_handle_message(_make_user_input("Allume la lumière du salon"), chat_log)
 
     # The tool was executed with the parsed arguments
     mock_exec.assert_called_once_with(
@@ -212,16 +219,12 @@ async def test_tool_loop_api_exception_resets_conversation(fake_entries):
     entity = _build_entity()
     entity._conversation_id = "existing_conv"
 
-    entity._client.beta.conversations.append_async = AsyncMock(
-        side_effect=RuntimeError("API down")
-    )
+    entity._client.beta.conversations.append_async = AsyncMock(side_effect=RuntimeError("API down"))
 
     ctx_patch, result_patch = _patch_conversation_deps()
     with ctx_patch, result_patch:
         chat_log = _make_chat_log()
-        await entity._async_handle_message(
-            _make_user_input("Quelle heure est-il ?"), chat_log
-        )
+        await entity._async_handle_message(_make_user_input("Quelle heure est-il ?"), chat_log)
 
     assert entity._conversation_id is None
     assert len(chat_log.content) == 1
@@ -247,8 +250,7 @@ async def test_tool_loop_builtin_tool_execution(fake_entries):
     entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, \
-         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
         chat_log = _make_chat_log()
         await entity._async_handle_message(_make_user_input("Quel temps fait-il ?"), chat_log)
 
@@ -266,11 +268,13 @@ async def test_tool_loop_stops_at_configured_max_iterations(fake_entries):
     tool iteration and the final assistant message is the too-many-steps
     fallback.
     """
-    entity = _build_entity({
-        "api_key": "test",
-        "use_agent": False,
-        "max_tool_iterations": 1,
-    })
+    entity = _build_entity(
+        {
+            "api_key": "test",
+            "use_agent": False,
+            "max_tool_iterations": 1,
+        }
+    )
 
     # The model answers with a tool call at every turn, forever
     func_call = FakeFunctionCallEntry(
@@ -286,18 +290,17 @@ async def test_tool_loop_stops_at_configured_max_iterations(fake_entries):
     entity._client.beta.conversations.append_async = AsyncMock(return_value=loop_response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, \
-         patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
-        mock_exec.return_value = json.dumps({
-            "success": True,
-            "entity_id": "light.salon",
-            "command": "turn_on",
-        })
+    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = json.dumps(
+            {
+                "success": True,
+                "entity_id": "light.salon",
+                "command": "turn_on",
+            }
+        )
 
         chat_log = _make_chat_log()
-        await entity._async_handle_message(
-            _make_user_input("Allume la lumière du salon"), chat_log
-        )
+        await entity._async_handle_message(_make_user_input("Allume la lumière du salon"), chat_log)
 
     # Exactly one tool iteration despite the model asking again
     mock_exec.assert_called_once_with(

@@ -215,3 +215,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Home Assistant dev instance artifacts
+.storage/
+home-assistant.log*
+home-assistant_v2.db*

@@ -1,10 +1,9 @@
 """
 Tests unitaires pour le module intent.py (intent HomestralQuery).
 
-Le handler envoie le texte libre (slot "query") à la conversation Mistral et
-retourne la réponse en speech. Le service homestral.generate_content est essayé
-d'abord ; quand le service n'est pas enregistré, le handler retombe sur un appel
-direct au client Mistral (entry.runtime_data), comme conversation.py.
+Le handler envoie le texte libre (slot "query") à la conversation Mistral via
+un appel direct au client (entry.runtime_data), comme conversation.py, et
+retourne la réponse en speech.
 
 Comme dans test_conversation.py, les classes SDK mistralai ne sont jamais
 importées : des fakes sont patchés dans le namespace homestral.intent, là où la
@@ -17,22 +16,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
-
 from homeassistant.helpers import intent
 
-from homestral.const import DOMAIN, SERVICE_GENERATE_CONTENT
-from homestral.intent import (
+from custom_components.homestral.intent import (
     INTENT_HOMESTRAL_QUERY,
     HomestralQueryHandler,
     async_setup_intents,
 )
 
-CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_sentences"
+CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_components" / "homestral" / "custom_sentences"
 
 
 # ---------------------------------------------------------------------------
 # Fake SDK entry classes (patched into homestral.intent)
 # ---------------------------------------------------------------------------
+
 
 class FakeFunctionCallEntry:
     """Client-side tool call requested by the model (e.g. control_ha_device)."""
@@ -69,7 +67,7 @@ class FakeFunctionResultEntry:
 @pytest.fixture
 def fake_entries(monkeypatch):
     """Patch the SDK entry classes used by the fallback tool loop's isinstance checks."""
-    import homestral.intent as intent_mod
+    import custom_components.homestral.intent as intent_mod
 
     monkeypatch.setattr(intent_mod, "FunctionCallEntry", FakeFunctionCallEntry)
     monkeypatch.setattr(intent_mod, "MessageOutputEntry", FakeMessageOutputEntry)
@@ -80,6 +78,7 @@ def fake_entries(monkeypatch):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_entry():
     """Config entry avec un client Mistral mocke (entry.runtime_data)."""
@@ -106,19 +105,15 @@ def _make_intent_obj(hass, query=None):
     """Fake Intent avec un vrai IntentResponse (pour tester le speech)."""
     intent_obj = MagicMock()
     intent_obj.hass = hass
-    intent_obj.slots = (
-        {} if query is None
-        else {"query": {"value": query, "text": query}}
-    )
-    intent_obj.create_response = lambda: intent.IntentResponse(
-        language="fr", intent=intent_obj
-    )
+    intent_obj.slots = {} if query is None else {"query": {"value": query, "text": query}}
+    intent_obj.create_response = lambda: intent.IntentResponse(language="fr", intent=intent_obj)
     return intent_obj
 
 
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_async_setup_intents_registers_handler(monkeypatch):
@@ -143,69 +138,31 @@ def test_handler_declares_query_slot_schema():
 
 
 # ---------------------------------------------------------------------------
-# Happy path — service generate_content
+# Happy path — appel direct au client Mistral (entry.runtime_data)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_handler_answers_via_generate_content_service():
-    """Le handler parle la réponse texte du service generate_content."""
-    entry = _make_entry()
-    hass = _make_hass(
-        entry=entry, service_result={"response": "La lumière est allumée."}
-    )
-    handler = HomestralQueryHandler()
-
-    response = await handler.async_handle(
-        _make_intent_obj(hass, "allume la lumière")
-    )
-
-    assert response.response_type == intent.IntentResponseType.QUERY_ANSWER
-    assert response.speech["plain"]["speech"] == "La lumière est allumée."
-    hass.services.async_call.assert_called_once_with(
-        DOMAIN,
-        SERVICE_GENERATE_CONTENT,
-        {"config_entry": "test_entry", "prompt": "allume la lumière"},
-        blocking=True,
-        return_response=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Fallback — appel direct au client Mistral (entry.runtime_data)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_handler_falls_back_to_direct_conversation(fake_entries):
     """Service indisponible -> appel direct à client.beta.conversations."""
     entry = _make_entry()
-    hass = _make_hass(
-        entry=entry, service_side_effect=Exception("Service not found")
-    )
+    hass = _make_hass(entry=entry, service_side_effect=Exception("Service not found"))
 
     conv_response = MagicMock()
     conv_response.conversation_id = "conv_123"
-    conv_response.outputs = [
-        FakeMessageOutputEntry("C'est fait, j'ai allumé la lumière.")
-    ]
-    entry.runtime_data.beta.conversations.start_async = AsyncMock(
-        return_value=conv_response
-    )
+    conv_response.outputs = [FakeMessageOutputEntry("C'est fait, j'ai allumé la lumière.")]
+    entry.runtime_data.beta.conversations.start_async = AsyncMock(return_value=conv_response)
 
     handler = HomestralQueryHandler()
     with patch(
-        "homestral.intent.build_ha_context",
+        "custom_components.homestral.intent.build_ha_context",
         new_callable=AsyncMock,
         return_value="ctx",
     ):
-        response = await handler.async_handle(
-            _make_intent_obj(hass, "allume la lumière")
-        )
+        response = await handler.async_handle(_make_intent_obj(hass, "allume la lumière"))
 
     assert response.response_type == intent.IntentResponseType.QUERY_ANSWER
-    assert (
-        response.speech["plain"]["speech"]
-        == "C'est fait, j'ai allumé la lumière."
-    )
+    assert response.speech["plain"]["speech"] == "C'est fait, j'ai allumé la lumière."
     kwargs = entry.runtime_data.beta.conversations.start_async.call_args.kwargs
     assert kwargs["inputs"] == "allume la lumière"
     assert kwargs["instructions"] == "ctx"
@@ -215,9 +172,7 @@ async def test_handler_falls_back_to_direct_conversation(fake_entries):
 async def test_handler_fallback_executes_tool_calls(fake_entries):
     """La boucle d'outils du fallback exécute control_ha_device puis répond."""
     entry = _make_entry()
-    hass = _make_hass(
-        entry=entry, service_side_effect=Exception("Service not found")
-    )
+    hass = _make_hass(entry=entry, service_side_effect=Exception("Service not found"))
 
     first = MagicMock()
     first.conversation_id = "conv_123"
@@ -229,42 +184,32 @@ async def test_handler_fallback_executes_tool_calls(fake_entries):
     ]
     second = MagicMock()
     second.conversation_id = "conv_123"
-    second.outputs = [
-        FakeMessageOutputEntry("La lumière du salon est allumée.")
-    ]
-    entry.runtime_data.beta.conversations.start_async = AsyncMock(
-        return_value=first
-    )
-    entry.runtime_data.beta.conversations.append_async = AsyncMock(
-        return_value=second
-    )
+    second.outputs = [FakeMessageOutputEntry("La lumière du salon est allumée.")]
+    entry.runtime_data.beta.conversations.start_async = AsyncMock(return_value=first)
+    entry.runtime_data.beta.conversations.append_async = AsyncMock(return_value=second)
 
     handler = HomestralQueryHandler()
-    with patch(
-        "homestral.intent.build_ha_context",
-        new_callable=AsyncMock,
-        return_value="ctx",
-    ), patch("homestral.intent.HAToolExecutor") as mock_executor_class:
+    with (
+        patch(
+            "custom_components.homestral.intent.build_ha_context",
+            new_callable=AsyncMock,
+            return_value="ctx",
+        ),
+        patch("custom_components.homestral.intent.HAToolExecutor") as mock_executor_class,
+    ):
         mock_executor = AsyncMock()
         mock_executor_class.return_value = mock_executor
         mock_executor.execute.return_value = json.dumps({"success": True})
 
-        response = await handler.async_handle(
-            _make_intent_obj(hass, "allume la lumière du salon")
-        )
+        response = await handler.async_handle(_make_intent_obj(hass, "allume la lumière du salon"))
 
     assert response.response_type == intent.IntentResponseType.QUERY_ANSWER
-    assert (
-        response.speech["plain"]["speech"]
-        == "La lumière du salon est allumée."
-    )
+    assert response.speech["plain"]["speech"] == "La lumière du salon est allumée."
     mock_executor.execute.assert_called_once_with(
         "control_ha_device", {"entity_id": "light.salon", "command": "turn_on"}
     )
     entry.runtime_data.beta.conversations.append_async.assert_called_once()
-    inputs = entry.runtime_data.beta.conversations.append_async.call_args.kwargs[
-        "inputs"
-    ]
+    inputs = entry.runtime_data.beta.conversations.append_async.call_args.kwargs["inputs"]
     assert len(inputs) == 1
     assert inputs[0].tool_call_id == "call_001"
     assert json.loads(inputs[0].result) == {"success": True}
@@ -274,24 +219,21 @@ async def test_handler_fallback_executes_tool_calls(fake_entries):
 # Error paths — le handler ne doit jamais lever d'exception
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_handler_error_when_service_and_client_fail():
     """Service en erreur + client en erreur -> speech d'erreur."""
     entry = _make_entry()
     hass = _make_hass(entry=entry, service_side_effect=Exception("service down"))
-    entry.runtime_data.beta.conversations.start_async = AsyncMock(
-        side_effect=RuntimeError("API Mistral indisponible")
-    )
+    entry.runtime_data.beta.conversations.start_async = AsyncMock(side_effect=RuntimeError("API Mistral indisponible"))
 
     handler = HomestralQueryHandler()
     with patch(
-        "homestral.intent.build_ha_context",
+        "custom_components.homestral.intent.build_ha_context",
         new_callable=AsyncMock,
         return_value="ctx",
     ):
-        response = await handler.async_handle(
-            _make_intent_obj(hass, "allume la lumière")
-        )
+        response = await handler.async_handle(_make_intent_obj(hass, "allume la lumière"))
 
     assert response.response_type == intent.IntentResponseType.ERROR
     assert "API Mistral indisponible" in response.speech["plain"]["speech"]
@@ -303,9 +245,7 @@ async def test_handler_error_when_not_configured():
     hass = _make_hass(entry=None)
     handler = HomestralQueryHandler()
 
-    response = await handler.async_handle(
-        _make_intent_obj(hass, "allume la lumière")
-    )
+    response = await handler.async_handle(_make_intent_obj(hass, "allume la lumière"))
 
     assert response.response_type == intent.IntentResponseType.ERROR
     assert response.speech["plain"]["speech"]
@@ -328,6 +268,7 @@ async def test_handler_error_when_query_slot_missing():
 # ---------------------------------------------------------------------------
 # Custom sentences — reconnaissance hassil des fichiers shipés
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "lang,sample,expected_query",

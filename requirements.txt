@@ -1,3 +1,11 @@
-mistralai>=3.2.0
-pytest>=7.0.0
-pytest-asyncio>=0.20.0
+# Development and test dependencies only — install with scripts/setup.
+# Runtime requirements are declared in custom_components/homestral/manifest.json
+# and installed by Home Assistant.
+homeassistant>=2025.11.0
+mistralai==3.2.0
+pydub==0.25.1
+audioop-lts; python_version >= "3.13"
+pyyaml
+pytest>=8.0
+pytest-asyncio>=0.24
+ruff

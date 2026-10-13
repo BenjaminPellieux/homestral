@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Install the development dependencies, including the exact hassil /
+# home-assistant-intents versions pinned by the installed Home Assistant
+# release (the conversation component imports them at collection time).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+PYTHON="${PYTHON:-python}"
+
+"$PYTHON" -m pip install --upgrade pip
+"$PYTHON" -m pip install -r requirements.txt
+
+conversation_requirements=$("$PYTHON" - <<'EOF'
+import json
+from pathlib import Path
+
+import homeassistant.components.conversation as conversation
+
+manifest = Path(conversation.__file__).with_name("manifest.json")
+print(" ".join(json.loads(manifest.read_text())["requirements"]))
+EOF
+)
+
+# shellcheck disable=SC2086
+"$PYTHON" -m pip install $conversation_requirements

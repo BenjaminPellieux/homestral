@@ -14,16 +14,16 @@ from pathlib import Path
 import pytest
 import yaml
 
-from homestral import const
+from custom_components.homestral import const
 
-MANIFEST_PATH = Path(__file__).parent.parent / "manifest.json"
-CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_sentences"
+MANIFEST_PATH = Path(__file__).parent.parent / "custom_components" / "homestral" / "manifest.json"
+CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_components" / "homestral" / "custom_sentences"
 
 EXPECTED_CHAT_MODELS = {
-    "mistral-large-latest",   # Mistral Large 4 (flagship)
-    "mistral-large-4",        # Mistral Large 4 — pinned preview ID
+    "mistral-large-latest",  # Mistral Large 4 (flagship)
+    "mistral-large-4",  # Mistral Large 4 — pinned preview ID
     "mistral-medium-latest",  # Mistral Medium 3.5
-    "mistral-small-latest",   # Mistral Small 4
+    "mistral-small-latest",  # Mistral Small 4
 }
 
 
@@ -50,7 +50,7 @@ def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
     assert manifest["version"] == "0.2.1"
-    assert "mistralai>=3.2.0" in manifest["requirements"]
+    assert "mistralai==3.2.0" in manifest["requirements"]
 
 
 def test_home_automation_vocab_single_word_constraint():
@@ -59,9 +59,7 @@ def test_home_automation_vocab_single_word_constraint():
     assert const.HOME_AUTOMATION_VOCAB, "HOME_AUTOMATION_VOCAB must not be empty"
     for word in const.HOME_AUTOMATION_VOCAB:
         assert isinstance(word, str)
-        assert pattern.match(word), (
-            f"context_bias entry must be a single word (no space, no comma): {word!r}"
-        )
+        assert pattern.match(word), f"context_bias entry must be a single word (no space, no comma): {word!r}"
 
 
 @pytest.mark.parametrize("lang", ["fr", "en"])
