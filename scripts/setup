@@ -11,13 +11,14 @@ PYTHON="${PYTHON:-python}"
 "$PYTHON" -m pip install --upgrade pip
 "$PYTHON" -m pip install -r requirements.txt
 
+# Read the manifest by path: importing the component itself already needs hassil.
 conversation_requirements=$("$PYTHON" - <<'EOF'
 import json
 from pathlib import Path
 
-import homeassistant.components.conversation as conversation
+import homeassistant
 
-manifest = Path(conversation.__file__).with_name("manifest.json")
+manifest = Path(homeassistant.__file__).parent / "components" / "conversation" / "manifest.json"
 print(" ".join(json.loads(manifest.read_text())["requirements"]))
 EOF
 )

@@ -1,10 +1,10 @@
 {
   "domain": "homestral",
   "name": "HomeStral",
+  "after_dependencies": ["assist_pipeline"],
   "codeowners": ["@BenjaminPellieux"],
   "config_flow": true,
   "dependencies": ["conversation"],
-  "after_dependencies": ["assist_pipeline"],
   "documentation": "https://github.com/BenjaminPellieux/homestral",
   "integration_type": "service",
   "iot_class": "cloud_polling",
