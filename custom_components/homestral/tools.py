@@ -1,11 +1,12 @@
 import json
 from datetime import datetime
+
 from homeassistant.core import HomeAssistant
 
 try:
-    from mistralai.client.models import FunctionTool, Function, WebSearchTool
+    from mistralai.client.models import Function, FunctionTool, WebSearchTool
 except ImportError:
-    from mistralai.models import FunctionTool, Function, WebSearchTool
+    from mistralai.models import Function, FunctionTool, WebSearchTool
 
 from .api_control import DeviceController
 from .logging_config import get_logger
@@ -23,107 +24,127 @@ WEB_SEARCH_TOOL = WebSearchTool()
 # ---------------------------------------------------------------------------
 
 HA_FUNCTION_TOOLS = [
-    FunctionTool(function=Function(
-        name="get_ha_state",
-        description=(
-            "Obtenir l'état actuel d'une entité Home Assistant "
-            "(lumière, thermostat, capteur, couverture, etc.)"
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "entity_id": {
-                    "type": "string",
-                    "description": "ID de l'entité HA, ex: light.salon, climate.chambre, sensor.temperature",
-                }
-            },
-            "required": ["entity_id"],
-        },
-    )),
-    FunctionTool(function=Function(
-        name="list_ha_entities",
-        description="Lister les entités d'un domaine Home Assistant avec leur état actuel",
-        parameters={
-            "type": "object",
-            "properties": {
-                "domain": {
-                    "type": "string",
-                    "description": "Domaine HA: light, switch, climate, cover, media_player, sensor, weather, lock, fan",
-                    "enum": [
-                        "light", "switch", "climate", "cover",
-                        "media_player", "sensor", "weather", "lock", "fan",
-                    ],
-                }
-            },
-            "required": ["domain"],
-        },
-    )),
-    FunctionTool(function=Function(
-        name="get_ha_weather",
-        description="Obtenir la météo locale depuis les entités météo de Home Assistant",
-        parameters={"type": "object", "properties": {}, "required": []},
-    )),
-    FunctionTool(function=Function(
-        name="control_ha_device",
-        description=(
-            "Contrôler un appareil Home Assistant : allumer/éteindre des lumières, "
-            "régler le thermostat, ouvrir/fermer des volets, contrôler un lecteur média, etc."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "entity_id": {
-                    "type": "string",
-                    "description": "ID de l'entité HA, ex: light.salon, climate.chambre, cover.volet_salon",
+    FunctionTool(
+        function=Function(
+            name="get_ha_state",
+            description=(
+                "Obtenir l'état actuel d'une entité Home Assistant (lumière, thermostat, capteur, couverture, etc.)"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "entity_id": {
+                        "type": "string",
+                        "description": "ID de l'entité HA, ex: light.salon, climate.chambre, sensor.temperature",
+                    }
                 },
-                "command": {
-                    "type": "string",
-                    "description": (
-                        "Commande à exécuter. "
-                        "Lumières: turn_on, turn_off, toggle. "
-                        "Stores/volets: open, close, stop, set_position. "
-                        "Thermostats: set_temperature, set_hvac_mode, turn_on, turn_off. "
-                        "Prises/interrupteurs: turn_on, turn_off, toggle. "
-                        "Média: turn_on, turn_off, play, pause, stop, volume_up, volume_down, set_volume. "
-                        "Serrures: lock, unlock. "
-                        "Ventilateurs: turn_on, turn_off, set_speed."
-                    ),
+                "required": ["entity_id"],
+            },
+        )
+    ),
+    FunctionTool(
+        function=Function(
+            name="list_ha_entities",
+            description="Lister les entités d'un domaine Home Assistant avec leur état actuel",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Domaine HA: light, switch, climate, cover, media_player, sensor, weather, lock, fan",
+                        "enum": [
+                            "light",
+                            "switch",
+                            "climate",
+                            "cover",
+                            "media_player",
+                            "sensor",
+                            "weather",
+                            "lock",
+                            "fan",
+                        ],
+                    }
                 },
-                "parameters": {
-                    "type": "object",
-                    "description": (
-                        "Paramètres optionnels selon la commande. "
-                        "brightness: entier 0-255. temperature: flottant en °C. "
-                        "position: entier 0-100. hvac_mode: heat|cool|auto|off. "
-                        "volume_level: flottant 0.0-1.0."
-                    ),
-                    "properties": {
-                        "brightness": {"type": "number"},
-                        "temperature": {"type": "number"},
-                        "position": {"type": "number"},
-                        "hvac_mode": {"type": "string"},
-                        "volume_level": {"type": "number"},
-                        "speed": {"type": "string"},
+                "required": ["domain"],
+            },
+        )
+    ),
+    FunctionTool(
+        function=Function(
+            name="get_ha_weather",
+            description="Obtenir la météo locale depuis les entités météo de Home Assistant",
+            parameters={"type": "object", "properties": {}, "required": []},
+        )
+    ),
+    FunctionTool(
+        function=Function(
+            name="control_ha_device",
+            description=(
+                "Contrôler un appareil Home Assistant : allumer/éteindre des lumières, "
+                "régler le thermostat, ouvrir/fermer des volets, contrôler un lecteur média, etc."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "entity_id": {
+                        "type": "string",
+                        "description": "ID de l'entité HA, ex: light.salon, climate.chambre, cover.volet_salon",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": (
+                            "Commande à exécuter. "
+                            "Lumières: turn_on, turn_off, toggle. "
+                            "Stores/volets: open, close, stop, set_position. "
+                            "Thermostats: set_temperature, set_hvac_mode, turn_on, turn_off. "
+                            "Prises/interrupteurs: turn_on, turn_off, toggle. "
+                            "Média: turn_on, turn_off, play, pause, stop, volume_up, volume_down, set_volume. "
+                            "Serrures: lock, unlock. "
+                            "Ventilateurs: turn_on, turn_off, set_speed."
+                        ),
+                    },
+                    "parameters": {
+                        "type": "object",
+                        "description": (
+                            "Paramètres optionnels selon la commande. "
+                            "brightness: entier 0-255. temperature: flottant en °C. "
+                            "position: entier 0-100. hvac_mode: heat|cool|auto|off. "
+                            "volume_level: flottant 0.0-1.0."
+                        ),
+                        "properties": {
+                            "brightness": {"type": "number"},
+                            "temperature": {"type": "number"},
+                            "position": {"type": "number"},
+                            "hvac_mode": {"type": "string"},
+                            "volume_level": {"type": "number"},
+                            "speed": {"type": "string"},
+                        },
                     },
                 },
+                "required": ["entity_id", "command"],
             },
-            "required": ["entity_id", "command"],
-        },
-    )),
+        )
+    ),
 ]
 
 ALL_TOOLS = [WEB_SEARCH_TOOL] + HA_FUNCTION_TOOLS
 
 # Names of built-in Mistral server-side tools
-MISTRAL_BUILTIN_TOOLS = frozenset({
-    "web_search", "web_search_premium",
-    "code_interpreter", "image_generation", "document_library",
-})
+MISTRAL_BUILTIN_TOOLS = frozenset(
+    {
+        "web_search",
+        "web_search_premium",
+        "code_interpreter",
+        "image_generation",
+        "document_library",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # HA tool executor
 # ---------------------------------------------------------------------------
+
 
 class HAToolExecutor:
     """Executes custom FunctionTools against Home Assistant state."""
@@ -168,10 +189,7 @@ class HAToolExecutor:
         }
 
     def _list_ha_entities(self, domain: str) -> dict:
-        states = (
-            self.hass.states.async_all(domain) if domain
-            else self.hass.states.async_all()
-        )
+        states = self.hass.states.async_all(domain) if domain else self.hass.states.async_all()
         truncated = len(states) > 30
         result = {
             "entities": [
@@ -197,10 +215,7 @@ class HAToolExecutor:
         weather_states = self.hass.states.async_all("weather")
         if not weather_states:
             return {
-                "error": (
-                    "Aucune entité météo dans Home Assistant. "
-                    "Installer l'intégration Met.no ou OpenWeatherMap."
-                )
+                "error": ("Aucune entité météo dans Home Assistant. Installer l'intégration Met.no ou OpenWeatherMap.")
             }
         w = weather_states[0]
         attrs = w.attributes
@@ -220,6 +235,7 @@ class HAToolExecutor:
 # ---------------------------------------------------------------------------
 # System context builder
 # ---------------------------------------------------------------------------
+
 
 async def build_ha_context(hass: HomeAssistant) -> str:
     """Build the system instructions injected into every Mistral conversation."""

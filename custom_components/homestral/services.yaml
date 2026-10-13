@@ -1,17 +1,3 @@
-generate_content:
-  fields:
-    config_entry:
-      required: true
-      selector:
-        config_entry:
-          integration: homestral
-    prompt:
-      required: true
-      selector:
-        text:
-          multiline: true
-      example: "Hello, how can I help you?"
-
 control_device:
   fields:
     config_entry:

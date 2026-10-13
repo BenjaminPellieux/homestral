@@ -1,0 +1,76 @@
+{
+  "title": "HomeStral",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Mistral AI",
+        "description": "Enter your Mistral AI API key. Speech-to-text (Voxtral 2) and text-to-speech (Voxtral TTS) are set up automatically with the same key.",
+        "data": {
+          "api_key": "Mistral API key",
+          "use_agent": "Use a Mistral agent",
+          "agent_id": "Agent ID",
+          "model": "Chat model",
+          "max_tool_iterations": "Maximum tool calls per request"
+        },
+        "data_description": {
+          "api_key": "Create a key at console.mistral.ai with access to the Mistral Large and Voxtral models.",
+          "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
+          "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
+          "model": "Mistral chat model used for conversations and voice queries.",
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid API key",
+      "cannot_connect": "Failed to connect to Mistral AI",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single configuration is possible."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HomeStral options",
+        "data": {
+          "use_agent": "Use a Mistral agent",
+          "agent_id": "Agent ID",
+          "model": "Chat model",
+          "max_tool_iterations": "Maximum tool calls per request"
+        },
+        "data_description": {
+          "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
+          "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
+          "model": "Mistral chat model used for conversations and voice queries.",
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+        }
+      }
+    }
+  },
+  "services": {
+    "control_device": {
+      "name": "Control device",
+      "description": "Calls a Home Assistant service on an entity or device through HomeStral.",
+      "fields": {
+        "config_entry": {
+          "name": "Config entry",
+          "description": "The HomeStral config entry to use."
+        },
+        "device_id": {
+          "name": "Entity or device",
+          "description": "Entity ID (for example light.living_room) or device ID to control."
+        },
+        "command": {
+          "name": "Command",
+          "description": "Service to call, for example turn_on, turn_off or toggle."
+        },
+        "parameters": {
+          "name": "Parameters",
+          "description": "Optional service data, for example brightness or color temperature."
+        }
+      }
+    }
+  }
+}

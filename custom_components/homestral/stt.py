@@ -1,22 +1,21 @@
-from collections.abc import AsyncIterable
 import asyncio
 import base64
 import io
+from collections.abc import AsyncIterable
+
 from homeassistant.components import stt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 try:
-    from mistralai import Mistral
     from mistralai.models import File as MistralFile
 except ImportError:
-    from mistralai.client import Mistral
     from mistralai.client.models import File as MistralFile
 
 from pydub import AudioSegment
+
 from .const import DEFAULT_STT_MODEL, HOME_AUTOMATION_VOCAB
-from .errors import AudioProcessingError
 from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
@@ -38,7 +37,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         self.hass = hass
         self._attr_name = "Voxtral STT"
         self._attr_unique_id = f"{config_entry.entry_id}-stt"
-        self._client = Mistral(api_key=config_entry.data["api_key"])
+        self._client = config_entry.runtime_data
 
     @property
     def supported_languages(self) -> list[str]:
@@ -123,12 +122,12 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         try:
             audio_file = MistralFile(
                 file_name="audio.wav",
-                content=wav_bytes,          # raw bytes — BytesIO rejected by Pydantic
+                content=wav_bytes,  # raw bytes — BytesIO rejected by Pydantic
                 content_type="audio/wav",
             )
             # language omitted intentionally: sending 'fr' caused silent empty responses;
             # auto-detect is more reliable across accents
-            _LOGGER.debug(f"[STT V2] calling transcriptions.complete (auto-detect lang)")
+            _LOGGER.debug("[STT V2] calling transcriptions.complete (auto-detect lang)")
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self._client.audio.transcriptions.complete(
@@ -159,14 +158,19 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self._client.chat.complete(
-                    model="voxtral-small-latest",   # the only model supporting input_audio in chat router
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "input_audio", "input_audio": audio_b64},
-                            {"type": "text", "text": "Transcribe this audio exactly. Return only the transcription, nothing else."},
-                        ],
-                    }],
+                    model="voxtral-small-latest",  # the only model supporting input_audio in chat router
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_audio", "input_audio": audio_b64},
+                                {
+                                    "type": "text",
+                                    "text": "Transcribe this audio exactly. Return only the transcription, nothing else.",
+                                },
+                            ],
+                        }
+                    ],
                 ),
             )
             text = response.choices[0].message.content or ""

@@ -1,5 +1,8 @@
+from homeassistant.const import Platform
+
 DOMAIN = "homestral"
 
+PLATFORMS = [Platform.SENSOR, Platform.CONVERSATION, Platform.STT, Platform.TTS]
 
 # Constants for configuration
 CONF_API_KEY = "api_key"
@@ -21,10 +24,10 @@ MAX_TOOL_ITERATIONS = 10
 DEFAULT_CHAT_MODEL = "mistral-large-latest"
 # Selectable chat models in the config flow (aliases follow the newest non-deprecated release)
 AVAILABLE_CHAT_MODELS = [
-    "mistral-large-latest",   # Mistral Large 4 (flagship, multimodal, 1M ctx)
-    "mistral-large-4",        # Mistral Large 4 — pinned preview ID
+    "mistral-large-latest",  # Mistral Large 4 (flagship, multimodal, 1M ctx)
+    "mistral-large-4",  # Mistral Large 4 — pinned preview ID
     "mistral-medium-latest",  # Mistral Medium 3.5 (agentic / coding)
-    "mistral-small-latest",   # Mistral Small 4 (efficient hybrid)
+    "mistral-small-latest",  # Mistral Small 4 (efficient hybrid)
 ]
 # STT — Voxtral Mini Transcribe 2 (Voxtral 2) via /v1/audio/transcriptions
 DEFAULT_STT_MODEL = "voxtral-mini-latest"
@@ -32,14 +35,23 @@ DEFAULT_STT_MODEL = "voxtral-mini-latest"
 # Home automation vocabulary for Voxtral 2 context_bias
 # IMPORTANT: API requires single words only — pattern ^[^,\s]+$ (no spaces, no commas)
 HOME_AUTOMATION_VOCAB = [
-    "lumière", "prise", "thermostat", "volet", "store",
-    "chauffage", "climatisation", "allume", "éteins",
-    "brightness", "temperature", "lumières",
+    "lumière",
+    "prise",
+    "thermostat",
+    "volet",
+    "store",
+    "chauffage",
+    "climatisation",
+    "allume",
+    "éteins",
+    "brightness",
+    "temperature",
+    "lumières",
 ]
 
 # TTS (Text-to-Speech) — Voxtral TTS
-DEFAULT_TTS_MODEL  = "voxtral-mini-tts-2603"
-DEFAULT_TTS_VOICE  = "casual_female"
+DEFAULT_TTS_MODEL = "voxtral-mini-tts-2603"
+DEFAULT_TTS_VOICE = "casual_female"
 DEFAULT_TTS_FORMAT = "mp3"
 
 # Custom HA FunctionTool names
@@ -48,5 +60,4 @@ TOOL_LIST_HA_ENTITIES = "list_ha_entities"
 TOOL_GET_HA_WEATHER = "get_ha_weather"
 
 # Services
-SERVICE_GENERATE_CONTENT = "generate_content"
 SERVICE_CONTROL_DEVICE = "control_device"

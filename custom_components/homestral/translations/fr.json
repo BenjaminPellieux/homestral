@@ -1,0 +1,76 @@
+{
+  "title": "HomeStral",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à Mistral AI",
+        "description": "Saisissez votre clé API Mistral AI. La reconnaissance vocale (Voxtral 2) et la synthèse vocale (Voxtral TTS) sont configurées automatiquement avec la même clé.",
+        "data": {
+          "api_key": "Clé API Mistral",
+          "use_agent": "Utiliser un agent Mistral",
+          "agent_id": "Identifiant de l'agent",
+          "model": "Modèle de chat",
+          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête"
+        },
+        "data_description": {
+          "api_key": "Créez une clé sur console.mistral.ai avec accès aux modèles Mistral Large et Voxtral.",
+          "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
+          "agent_id": "Utilisé uniquement si « Utiliser un agent Mistral » est activé.",
+          "model": "Modèle de chat Mistral utilisé pour les conversations et les requêtes vocales.",
+          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10)."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Clé API invalide",
+      "cannot_connect": "Impossible de joindre Mistral AI",
+      "unknown": "Erreur inattendue"
+    },
+    "abort": {
+      "single_instance_allowed": "Déjà configuré. Une seule configuration est possible."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options HomeStral",
+        "data": {
+          "use_agent": "Utiliser un agent Mistral",
+          "agent_id": "Identifiant de l'agent",
+          "model": "Modèle de chat",
+          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête"
+        },
+        "data_description": {
+          "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
+          "agent_id": "Utilisé uniquement si « Utiliser un agent Mistral » est activé.",
+          "model": "Modèle de chat Mistral utilisé pour les conversations et les requêtes vocales.",
+          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10)."
+        }
+      }
+    }
+  },
+  "services": {
+    "control_device": {
+      "name": "Contrôler un appareil",
+      "description": "Appelle un service Home Assistant sur une entité ou un appareil via HomeStral.",
+      "fields": {
+        "config_entry": {
+          "name": "Entrée de configuration",
+          "description": "L'entrée de configuration HomeStral à utiliser."
+        },
+        "device_id": {
+          "name": "Entité ou appareil",
+          "description": "Identifiant d'entité (par exemple light.salon) ou d'appareil à contrôler."
+        },
+        "command": {
+          "name": "Commande",
+          "description": "Service à appeler, par exemple turn_on, turn_off ou toggle."
+        },
+        "parameters": {
+          "name": "Paramètres",
+          "description": "Données de service optionnelles, par exemple la luminosité ou la température de couleur."
+        }
+      }
+    }
+  }
+}

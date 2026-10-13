@@ -1,15 +1,11 @@
 import asyncio
+
 from homeassistant.components import tts
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-try:
-    from mistralai import Mistral
-except ImportError:
-    from mistralai.client import Mistral
-
-from .const import DEFAULT_TTS_MODEL, DEFAULT_TTS_FORMAT
+from .const import DEFAULT_TTS_FORMAT, DEFAULT_TTS_MODEL
 from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
@@ -35,7 +31,7 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
         self.hass = hass
         self._attr_name = "Voxtral TTS"
         self._attr_unique_id = f"{config_entry.entry_id}-tts"
-        self._client = Mistral(api_key=config_entry.data["api_key"])
+        self._client = config_entry.runtime_data
 
     async def async_get_tts_audio(
         self,

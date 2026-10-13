@@ -1,34 +1,43 @@
-from homeassistant.components.conversation import (
-    ConversationEntity,
-    ConversationResult,
-    ConversationInput,
-    AbstractConversationAgent,
-)
-
-
-from homeassistant.components.conversation.chat_log import AssistantContent
 import homeassistant.components.conversation as conversation
+from homeassistant.components.conversation import (
+    AbstractConversationAgent,
+    ConversationEntity,
+    ConversationInput,
+    ConversationResult,
+)
+from homeassistant.components.conversation.chat_log import AssistantContent
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.const import MATCH_ALL
+
 try:
-    from mistralai.models.toolexecutionentry import ToolExecutionEntry
+    from mistralai.models import ConversationResponse, FunctionCallEntry, FunctionResultEntry
     from mistralai.models.messageoutputentry import MessageOutputEntry
-    from mistralai.models import ConversationResponse
-    from mistralai.models import FunctionCallEntry, FunctionResultEntry
+    from mistralai.models.toolexecutionentry import ToolExecutionEntry
 except ImportError:
     # HA musllinux wheel uses mistralai.client.models (namespace package)
     from mistralai.client.models import (
-        ToolExecutionEntry, MessageOutputEntry, ConversationResponse,
-        FunctionCallEntry, FunctionResultEntry,
+        ConversationResponse,
+        FunctionCallEntry,
+        FunctionResultEntry,
+        MessageOutputEntry,
+        ToolExecutionEntry,
     )
-from .const import *
 import json
-from .errors import ConversationError
-from .logging_config import get_logger
-from .tools import HAToolExecutor, ALL_TOOLS, build_ha_context, MISTRAL_BUILTIN_TOOLS
 
+from .const import (
+    CONF_AGENT_ID,
+    CONF_MAX_TOOL_ITERATIONS,
+    CONF_MODEL,
+    CONF_USE_AGENT,
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_MAX_TOOL_ITERATIONS,
+)
+from .errors import ConversationError
+from .helpers import get_option
+from .logging_config import get_logger
+from .tools import ALL_TOOLS, HAToolExecutor, build_ha_context
 
 _LOGGER = get_logger(__name__)
 
@@ -59,6 +68,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Mistral conversation entity."""
     async_add_entities([MistralConversationEntity(hass, entry)])
+
 
 class MistralConversationEntity(
     ConversationEntity,
@@ -95,14 +105,16 @@ class MistralConversationEntity(
     async def async_handle_error(self, chat_log, error):
         """Handle errors and append error messages to the chat log."""
         error_message = f"Error: {str(error)}"
-        if hasattr(error, 'code'):
+        if hasattr(error, "code"):
             error_message += f" (Code: {error.code})"
-        if hasattr(error, 'details'):
+        if hasattr(error, "details"):
             error_message += f" Details: {error.details}"
-        chat_log.content.append(AssistantContent(
-            agent_id=self._attr_unique_id,
-            content=error_message,
-        ))
+        chat_log.content.append(
+            AssistantContent(
+                agent_id=self._attr_unique_id,
+                content=error_message,
+            )
+        )
 
     async def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
         instructions = await build_ha_context(self.hass)
@@ -111,12 +123,12 @@ class MistralConversationEntity(
             instructions=instructions,
             tools=ALL_TOOLS,
         )
-        if self._entry.data.get(CONF_USE_AGENT, False):
+        if get_option(self._entry, CONF_USE_AGENT, False):
             _LOGGER.info("Starting new conversation with agent")
-            kwargs["agent_id"] = self._entry.data.get(CONF_AGENT_ID)
+            kwargs["agent_id"] = get_option(self._entry, CONF_AGENT_ID)
         else:
             _LOGGER.info("Starting new conversation with model")
-            kwargs["model"] = self._entry.data.get(CONF_MODEL, DEFAULT_CHAT_MODEL)
+            kwargs["model"] = get_option(self._entry, CONF_MODEL, DEFAULT_CHAT_MODEL)
         return await self._client.beta.conversations.start_async(**kwargs)
 
     async def keep_conversation(self, user_input: ConversationInput) -> ConversationResponse:
@@ -127,8 +139,6 @@ class MistralConversationEntity(
             inputs=user_input.text,
             completion_args={"instructions": instructions},
         )
-
-
 
     async def _async_handle_message(
         self,
@@ -142,11 +152,11 @@ class MistralConversationEntity(
                 response = await self.start_conversation(user_input)
             else:
                 response = await self.keep_conversation(user_input)
-                  
+
             # Tool execution loop (bounded by the configured max iterations)
             self._conversation_id = getattr(response, "conversation_id", None)
             content = None
-            max_iterations = int(self._entry.data.get(CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS))
+            max_iterations = int(get_option(self._entry, CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS))
             for iteration in range(max_iterations):
                 if not response.outputs:
                     content = "Désolé, je n'ai pas reçu de réponse."
@@ -173,10 +183,7 @@ class MistralConversationEntity(
                     all_calls = [o for o in response.outputs if isinstance(o, FunctionCallEntry)]
                     result_entries = []
                     for call in all_calls:
-                        args_str = (
-                            call.arguments if isinstance(call.arguments, str)
-                            else json.dumps(call.arguments)
-                        )
+                        args_str = call.arguments if isinstance(call.arguments, str) else json.dumps(call.arguments)
                         _LOGGER.info(f"[TOOL custom] {call.name}, args: {args_str}")
                         try:
                             tool_result = await self._tool_executor.execute(
@@ -187,10 +194,12 @@ class MistralConversationEntity(
                             _LOGGER.error(f"[TOOL error] {call.name}: {exc}")
                             tool_result = json.dumps({"error": str(exc)})
                         _LOGGER.info(f"[TOOL result] {call.name}: {tool_result[:200]}")
-                        result_entries.append(FunctionResultEntry(
-                            tool_call_id=call.tool_call_id,
-                            result=tool_result,
-                        ))
+                        result_entries.append(
+                            FunctionResultEntry(
+                                tool_call_id=call.tool_call_id,
+                                result=tool_result,
+                            )
+                        )
                     response = await self._client.beta.conversations.append_async(
                         conversation_id=self._conversation_id,
                         inputs=result_entries,
@@ -212,16 +221,18 @@ class MistralConversationEntity(
 
             content = content if content is not None else "Aucune réponse."
             _LOGGER.info(f"[CONV] final content: {content[:200]}")
-            chat_log.content.append(AssistantContent(
-                agent_id=self._attr_unique_id,
-                content=content, 
-            ))
+            chat_log.content.append(
+                AssistantContent(
+                    agent_id=self._attr_unique_id,
+                    content=content,
+                )
+            )
 
         except Exception as e:
             error = ConversationError(
                 message=f"Error processing conversation: {e}",
                 code="CONVERSATION_PROCESSING_ERROR",
-                details={"error": str(e), "conversation_id": self._conversation_id}
+                details={"error": str(e), "conversation_id": self._conversation_id},
             )
             _LOGGER.error(f"Error processing conversation: {error}")
             await self.async_handle_error(chat_log, error)

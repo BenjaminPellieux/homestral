@@ -1,11 +1,13 @@
-from homeassistant.helpers.entity import Entity
-from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
 import logging
 
-from .const import *
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import Entity
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Set up the Homestral sensor."""
@@ -13,6 +15,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     sensor = HomestralSensor(api_key)
     _LOGGER.info(f"Setup entry: {sensor.name}")
     async_add_entities([sensor], True)
+
 
 class HomestralSensor(Entity):
     def __init__(self, api_key):
