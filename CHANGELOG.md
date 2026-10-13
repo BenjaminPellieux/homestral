@@ -7,14 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.1] - 2026-10-13
 
+First public release, installable through HACS.
+
+### Added
+
+- **HACS packaging**: the integration now lives in `custom_components/homestral/`, with `hacs.json`, a brand icon, an MIT `LICENSE`, and CI workflows (HACS validation, hassfest, ruff, pytest, tag-driven GitHub releases).
+- **API key validation**: the config flow checks the key against the Mistral API and reports `invalid_auth` / `cannot_connect` instead of creating a broken entry.
+- **Options flow**: the chat model, Mistral agent and tool-loop bound can be changed after setup (Settings → Devices & services → HomeStral → Configure); the entry reloads automatically.
+- **Translations**: English and French UI strings for the config flow, options and the `control_device` service.
+- **Automatic custom sentences**: the `HomestralQuery` sentence files are installed into `<config>/custom_sentences/{en,fr}/homestral.yaml` on first setup (never overwritten) and the conversation agent is reloaded.
+- **Single instance**: the integration declares `single_config_entry`.
+
+### Changed
+
+- **Requirements**: `mistralai==3.2.0` and `pydub==0.25.1` are pinned; the unused `timezonefinder` and `python-dateutil` requirements were removed.
+- **Manifest**: valid `codeowners`, `issue_tracker` pointing at the issues page, `loggers`, and only `conversation` as a hard dependency.
+- **Services**: the never-implemented `generate_content` service was removed from `services.yaml`; the `HomestralQuery` intent now calls the Mistral conversation directly.
+- **Code style**: the code base is formatted and linted with ruff.
+
 ### Fixed
 
-- **Security**: The Mistral API key is no longer logged in plaintext by `sensor.py`.
-- **Performance**: The Mistral client is now built in an executor during setup, avoiding blocking calls in the event loop (HA `homeassistant.util.loop` warnings).
+- **Security**: the Mistral API key is no longer logged in plaintext by `sensor.py` nor by the config flow.
+- **Performance**: the Mistral client is built once in an executor during setup and shared by the conversation, STT and TTS entities (no more blocking client construction in the event loop).
+- **Intents**: the `HomestralQuery` intent handler is now actually registered at startup.
 
 ### Tests
 
-- Added `tests/test_sensor.py` (API key never logged) and `tests/test_init.py` (client built via executor).
+- Added `tests/test_sensor.py` (API key never logged) and `tests/test_init.py` (client built via executor, custom sentences installed once).
 
 ## [0.2.0] - 2026-10-13
 

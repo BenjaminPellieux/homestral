@@ -1,183 +1,152 @@
-# HomeStral - Mistral AI for Home Assistant
+# HomeStral — Mistral AI for Home Assistant
 
-[![GitHub stars](https://img.shields.io/github/stars/BenjaminPellieux/homestral.svg)](https://github.com/BenjaminPellieux/homestral/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/BenjaminPellieux/homestral.svg)](https://github.com/BenjaminPellieux/homestral/issues)
-[![License](https://img.shields.io/github/license/BenjaminPellieux/homestral.svg)](https://github.com/BenjaminPellieux/homestral/blob/main/LICENSE)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/v/release/BenjaminPellieux/homestral)](https://github.com/BenjaminPellieux/homestral/releases)
+[![License](https://img.shields.io/github/license/BenjaminPellieux/homestral)](LICENSE)
+[![HACS](https://github.com/BenjaminPellieux/homestral/actions/workflows/hacs.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/hacs.yaml)
+[![Hassfest](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml)
+[![Tests](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml)
 
-HomeStral is a powerful integration that brings Mistral AI capabilities to Home Assistant, enabling intelligent voice control and advanced automation for your smart home.
-
+HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a conversation agent powered by Mistral Large 4 that can control your devices through tool calling, speech-to-text with Voxtral 2 and text-to-speech with Voxtral TTS — all from a single Mistral API key.
 
 ## Features
 
-- **Mistral Large 4 Chat**: Powered by Mistral's flagship multimodal model with a 1M context window
-- **Voice-Driven Device Control**: Control your smart home devices with natural language through tool calling (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`)
-- **Voxtral 2 Speech-to-Text**: Accurate speech recognition with home-automation context biasing, supporting 13 languages
-- **Voxtral Text-to-Speech**: Natural voice responses synthesized with Voxtral TTS
-- **Selectable Models**: Choose between Mistral Large, Medium, and Small in the config flow
-- **Configurable Tool Loop**: Bound the number of tool-call iterations per conversation turn (`max_tool_iterations`, default 5)
-- **Direct Voice Queries**: Ask Homestral directly ("Demande à Homestral ...") through the `HomestralQuery` intent and shipped custom sentences
-- **Customizable**: Adapt the assistant to your specific home automation needs
-- **Multi-language Support**: Works with English, French, and more
+- **Conversation agent** — Mistral Large 4 (1M context, multimodal) as an Assist conversation agent, with Mistral Medium and Small also selectable.
+- **Device control by voice** — the model calls Home Assistant tools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with your live home context injected into every request.
+- **Speech-to-text** — Voxtral 2 (Voxtral Mini Transcribe 2) with home-automation vocabulary biasing, 13 languages.
+- **Text-to-speech** — Voxtral TTS (`voxtral-mini-tts-2603`).
+- **Direct voice queries** — "Demande à Homestral …" / "Ask Homestral …" through the `HomestralQuery` intent; the sentence files are installed automatically.
+- **Mistral agents** — route conversations through a Mistral agent instead of a plain model.
+- **Tool-loop bound** — cap the number of tool calls a single request may trigger (1–10, default 5).
+- **Options flow** — change the model, agent and tool-loop bound after setup without re-entering your key.
+- **Translated UI** — English and French.
+
+## Requirements
+
+- Home Assistant **2025.11** or newer.
+- A Mistral AI API key from [console.mistral.ai](https://console.mistral.ai) with access to the Mistral Large and Voxtral models.
 
 ## Installation
 
-### Prerequisites
+### Option 1: HACS (custom repository)
 
-- Home Assistant 2025.11 or higher (requires Python 3.13+)
-- Mistral AI API key (`MISTRAL_API_KEY`) with access to the `mistral-large` and `voxtral` models
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=BenjaminPellieux&repository=homestral&category=integration)
 
-### Installation Steps
+1. In Home Assistant open **HACS**, click the **⋮** menu (top right) and choose **Custom repositories**.
+2. Repository: `https://github.com/BenjaminPellieux/homestral` — Type: **Integration** — click **Add**.
+3. Search for **HomeStral** in HACS and click **Download**.
+4. **Restart Home Assistant.**
 
-1. **Add this repository to HACS** (recommended):
-   - Go to HACS in Home Assistant
-   - Add this repository URL: `https://github.com/BenjaminPellieux/homestral`
-   - Install the "HomeStral" integration
+### Option 2: Manual
 
-2. **Or manual installation**:
-   ```bash
-   git clone https://github.com/BenjaminPellieux/homestral.git
-   cp -r homestral /path/to/homeassistant/config/custom_components/
-   ```
+1. Download the [latest release](https://github.com/BenjaminPellieux/homestral/releases/latest) (or clone the repository).
+2. Copy the `custom_components/homestral` folder into `<config>/custom_components/`.
+3. **Restart Home Assistant.**
 
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Setup
 
-4. **Restart Home Assistant**
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=homestral)
 
-## Configuration
+1. Go to **Settings → Devices & services → Add integration** and search for **HomeStral**.
+2. Enter your Mistral API key. It is validated against the Mistral API before the entry is created.
+3. Optionally pick the chat model, enable a Mistral agent, and set the maximum number of tool calls per request.
 
-1. Add the integration through the Home Assistant UI:
-   - Go to Settings > Devices & Services
-   - Click "Add Integration" and search for "HomeStral"
+Speech-to-text and text-to-speech entities are created automatically with the same key.
 
-2. Enter your Mistral AI API key when prompted
+### Changing options later
 
-3. Configure optional settings:
-   - Choose between using a Mistral agent or model
-   - Select your chat model (default: `mistral-large-latest`):
-     - `mistral-large-latest` — Mistral Large 4 (flagship, multimodal, 1M context)
-     - `mistral-large-4` — Mistral Large 4 (pinned preview ID)
-     - `mistral-medium-latest` — Mistral Medium 3.5
-     - `mistral-small-latest` — Mistral Small 4
-   - Configure agent ID if using an agent
-   - Set the maximum tool-call iterations per turn (`max_tool_iterations`, default: 5, range: 1–10)
-   - Adjust parameters like temperature and max tokens
+**Settings → Devices & services → HomeStral → Configure** lets you change the model, agent and tool-loop bound. Changes are applied immediately.
 
-Speech-to-text uses Voxtral 2 (Voxtral Mini Transcribe 2) and text-to-speech uses Voxtral TTS (`voxtral-mini-tts-2603`); both are set up automatically with your Mistral AI API key.
+### Using HomeStral in Assist
 
-## Usage Examples
+Go to **Settings → Voice assistants**, create or edit an assistant and select:
 
-### Basic Voice Commands
+| Setting | Entity |
+| --- | --- |
+| Conversation agent | **Mistral Conversation** |
+| Speech-to-text | **Voxtral STT** |
+| Text-to-speech | **Voxtral TTS** |
+
+## Usage
+
+### Talking to the conversation agent
 
 - "Turn on the living room lights"
 - "What's the temperature in the bedroom?"
 - "Set the thermostat to 22 degrees"
-- "What's on my to-do list?"
-
-### Advanced Conversations
-
-- "Why is my energy usage higher than usual?"
-- "Can you suggest ways to optimize my smart home setup?"
 - "What's the weather forecast for tomorrow?"
+- "Why is my energy usage higher than usual?"
 
-### Direct Voice Queries (HomestralQuery Intent)
+### Direct voice queries ("Ask Homestral …")
 
-Homestral ships a `HomestralQuery` intent so you can talk to it directly:
+HomeStral ships a `HomestralQuery` intent so the default Assist pipeline can hand a free-text question to Mistral:
 
 - "Demande à Homestral quelle est la météo"
 - "Ask Homestral what the weather is"
 
-The free text is forwarded to the Mistral conversation, which can control your devices through tool calling, and the answer is spoken back.
+On first setup the sentence files are installed into your configuration directory:
 
-To enable it, copy the shipped custom sentences into your Home Assistant configuration:
-
-```bash
-mkdir -p /path/to/homeassistant/config/custom_sentences/fr /path/to/homeassistant/config/custom_sentences/en
-cp custom_sentences/fr.yaml /path/to/homeassistant/config/custom_sentences/fr/homestral.yaml
-cp custom_sentences/en.yaml /path/to/homeassistant/config/custom_sentences/en/homestral.yaml
+```
+<config>/custom_sentences/en/homestral.yaml
+<config>/custom_sentences/fr/homestral.yaml
 ```
 
-Then restart Home Assistant (or reload the conversation integration). The sentences capture the free text in the `{query}` wildcard slot.
+They are never overwritten, so you can customise the trigger phrases freely. Delete a file and reload the integration to restore the defaults. After editing, run the `conversation.reload` service (or restart Home Assistant).
 
-## Customization
+### Service `homestral.control_device`
 
-### Configuration Options
-
-You can customize the integration through the `configuration.yaml` file:
+Call a Home Assistant service on an entity through HomeStral's device controller, for example from an automation:
 
 ```yaml
-homestral:
-  api_key: "your-mistral-api-key"
-  use_agent: false
-  agent_id: "your-agent-id"
-  model: "mistral-large-latest"
+service: homestral.control_device
+data:
+  config_entry: !input homestral_entry
+  device_id: light.living_room
+  command: turn_on
+  parameters:
+    brightness: 200
 ```
 
-### Custom Commands
+## Models
 
-Create custom commands by extending the integration:
-
-```python
-# In your custom component
-def async_handle_message(self, user_input, chat_log):
-    if "custom command" in user_input.text.lower():
-        # Handle your custom command
-        return custom_response
-```
+| Role | Model | Notes |
+| --- | --- | --- |
+| Chat (default) | `mistral-large-latest` | Mistral Large 4 — flagship, multimodal, 1M context |
+| Chat | `mistral-large-4` | Mistral Large 4, pinned preview ID |
+| Chat | `mistral-medium-latest` | Mistral Medium 3.5 |
+| Chat | `mistral-small-latest` | Mistral Small 4 |
+| Speech-to-text | `voxtral-mini-latest` | Voxtral Mini Transcribe 2, with V1 chat fallback |
+| Text-to-speech | `voxtral-mini-tts-2603` | Voxtral TTS |
 
 ## Troubleshooting
 
-### Common Issues
+Enable debug logging in `configuration.yaml` and restart:
 
-1. **API Connection Errors**:
-   - Verify your API key is correct
-   - Check your internet connection
-   - Ensure Mistral AI service is available
+```yaml
+logger:
+  logs:
+    custom_components.homestral: debug
+```
 
-2. **Audio Recognition Problems**:
-   - Make sure your microphone is properly configured
-   - Speak clearly and avoid background noise
-   - Check audio format is supported (16kHz, 16-bit PCM)
+| Symptom | What to check |
+| --- | --- |
+| "Invalid API key" during setup | The key was rejected by Mistral — create a new one at console.mistral.ai and make sure it has access to the Large and Voxtral models. |
+| "Failed to connect to Mistral AI" | Outbound HTTPS from Home Assistant to `api.mistral.ai` is blocked, or the service is down. |
+| Voice command is not transcribed | Assist must send 16 kHz, 16-bit, mono PCM (the default). Check the `[STT]` lines in the debug log. |
+| "Ask Homestral …" is not recognised | Make sure `<config>/custom_sentences/<lang>/homestral.yaml` exists and that the assistant language matches (`en` or `fr`). |
+| Integration not listed | Confirm the folder is `<config>/custom_components/homestral/`, check the Home Assistant log for import errors and restart. |
 
-3. **Integration Not Showing**:
-   - Verify the custom component is in the correct directory
-   - Check Home Assistant logs for errors
-   - Restart Home Assistant after installation
+Still stuck? [Open an issue](https://github.com/BenjaminPellieux/homestral/issues/new/choose) with redacted logs.
 
 ## Contributing
 
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Running Tests
-
-To run the tests, use the following command:
-
-```bash
-pytest tests/
-```
-
-### Development Guide
-
-For more details on the architecture, modules, and data flows, please refer to the [Development Guide](DEVELOPMENT.md).
+Contributions are welcome — see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development setup, test suite and release process, and [DEVELOPMENT.md](DEVELOPMENT.md) for the architecture.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- [Home Assistant](https://www.home-assistant.io/) for the amazing home automation platform
-- [Mistral AI](https://mistral.ai) for the powerful language models
-- All contributors who have helped improve this integration
-
-## Support
-
-For questions or support, please open an issue on this repository or contact the maintainer.
+- [Home Assistant](https://www.home-assistant.io/) for the platform.
+- [Mistral AI](https://mistral.ai) for the models.

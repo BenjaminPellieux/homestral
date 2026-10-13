@@ -13,8 +13,21 @@ HomeStral is a Home Assistant integration that leverages Mistral AI for voice co
 3. **Conversation**: Manages asynchronous conversations with the Mistral SDK, including the tool-calling loop and automatic Home Assistant context injection.
 4. **Tools**: Defines the Home Assistant FunctionTools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) and executes them against the live HA state via `HAToolExecutor`.
 5. **Sensor**: Provides sensor entities for Home Assistant.
-6. **Config Flow**: Handles the configuration flow for the integration, including chat model selection.
-7. **Services**: Exposes services for generating content and interacting with the integration.
+6. **Config Flow**: Validates the API key against Mistral, creates the config entry, and exposes an options flow (model, agent, tool-loop bound).
+7. **Intent**: Handles the `HomestralQuery` intent ("Ask Homestral …") and installs the shipped custom sentences at setup.
+8. **Services**: Exposes the `homestral.control_device` service.
+
+### Repository layout
+
+```
+custom_components/homestral/   the integration (what HACS installs)
+  brand/icon.png               HACS brand asset
+  custom_sentences/{en,fr}.yaml HomestralQuery sentences, copied to <config>/custom_sentences/<lang>/homestral.yaml
+  translations/{en,fr}.json    UI translations (strings.json is the source)
+tests/                         pytest suite (imports custom_components.homestral.*)
+scripts/setup                  dev dependency installer
+.github/workflows/             hacs, hassfest, lint (ruff), tests (pytest), release
+```
 
 ### Data Flow
 
@@ -72,18 +85,24 @@ This module provides sensor entities for Home Assistant. It includes:
 
 ### `config_flow.py`
 This module handles the configuration flow for the integration. It includes:
-- User input validation.
+- API key validation against the Mistral API (`models.list()` in an executor), mapped to the `invalid_auth` / `cannot_connect` / `unknown` form errors.
 - Chat model selection (`mistral-large-latest`, `mistral-large-4`, `mistral-medium-latest`, `mistral-small-latest`).
-- Configuration setup and management.
+- An options flow (`HomestralOptionsFlow`) for the model, agent and tool-loop bound; the entry is reloaded when options change.
+
+The API key is stored in `entry.data`, everything else in `entry.options`. `helpers.get_option()` reads options first and falls back to `data` for entries created before the options flow existed.
+
+### `intent.py`
+This module registers the `HomestralQuery` intent handler. The free-text `query` slot is sent to the Mistral conversation with the same tool loop as `conversation.py`, and the answer is spoken back.
+
+### `helpers.py`
+Shared helpers: `create_mistral_client()` (blocking, run in an executor), `get_option()` and `install_custom_sentences()` (copies the shipped sentence files into `<config>/custom_sentences/<lang>/homestral.yaml` without overwriting, then `conversation.reload` is called).
 
 ### `services.yaml`
-This file defines the services exposed by the integration. It includes:
-- Service definitions and configurations.
-- Input validation and examples.
+This file defines the `homestral.control_device` service. Service and field names/descriptions live in `strings.json` / `translations/`.
 
 ## Mistral AI SDK
 
-The integration uses the `mistralai` Python SDK v3.x (`mistralai>=3.2.0`). The SDK ships two import layouts depending on the installation: the PyPI standard layout (`mistralai.models`) and the Home Assistant musllinux wheel layout (`mistralai.client.models`, a namespace package). Model classes are therefore imported with a try/except fallback covering both layouts:
+The integration uses the `mistralai` Python SDK v3.x (pinned to `mistralai==3.2.0` in the manifest). The SDK ships two import layouts depending on the installation: the PyPI standard layout (`mistralai.models`) and the Home Assistant musllinux wheel layout (`mistralai.client.models`, a namespace package). Model classes are therefore imported with a try/except fallback covering both layouts:
 
 ```python
 try:
@@ -104,21 +123,24 @@ except ImportError:
    ```bash
    git clone https://github.com/BenjaminPellieux/homestral.git
    ```
-2. Install the dependencies:
+2. Create a Python 3.13 environment and install the development dependencies:
    ```bash
-   pip install -r requirements.txt
+   uv venv --python 3.13 .venv && source .venv/bin/activate
+   PYTHON=python scripts/setup
    ```
 3. Copy the integration to your Home Assistant configuration:
    ```bash
-   cp -r homestral /path/to/homeassistant/config/custom_components/
+   cp -r custom_components/homestral /path/to/homeassistant/config/custom_components/
    ```
 4. Restart Home Assistant.
 
-### Running Tests
-To run the tests, use the following command:
+### Running Tests and Lint
 ```bash
-pytest tests/
+pytest -q
+ruff check . && ruff format --check .
 ```
+
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the pull request and release process.
 
 ### Contributing
 We welcome contributions! Please follow these steps:
