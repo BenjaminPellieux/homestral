@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in HomeStral does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please remove API keys and any personal data from logs before posting.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: homestral-version
+    attributes:
+      label: HomeStral version
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2025.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - HACS
+        - Manual
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (redacted)
+      description: Enable debug logging for `custom_components.homestral` and paste the relevant lines.
+      render: text
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Additional context
+      description: Model in use, agent or not, STT/TTS pipeline configuration, anything else useful.
