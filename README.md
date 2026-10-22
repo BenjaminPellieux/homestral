@@ -20,7 +20,7 @@ HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a co
 
 - **Conversation agent** — Mistral Small 4 by default (the model Mistral runs in its own voice pipeline), with Mistral Large 4 (1M context, multimodal) and Mistral Medium 3.5 also selectable. Each Home Assistant conversation (user, device or satellite) gets its own Mistral conversation.
 - **Device control by voice** — the model calls Home Assistant tools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with your live home context injected into every request.
-- **Speech-to-text** — Voxtral 3 (Voxtral Mini Transcribe 3) with multi-word home-automation vocabulary biasing, 13 languages.
+- **Speech-to-text** — Voxtral 3 realtime transcription: the audio is streamed to Voxtral while you speak, Voxtral's turn detection ends the utterance as soon as you stop (before Home Assistant's silence timeout), and the names of your exposed entities, areas and floors bias the recognition. Falls back to file transcription (Voxtral Mini or Small Transcribe 3) automatically. 13 languages.
 - **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`) with preset voices per language (Marie for French by default), selectable per Assist pipeline.
 - **Direct voice queries** — "Demande à Homestral …" / "Ask Homestral …" through the `HomestralQuery` intent; the sentence files are installed automatically.
 - **Mistral agents** — route conversations through a Mistral agent instead of a plain model.
@@ -62,7 +62,7 @@ Speech-to-text and text-to-speech entities are created automatically with the sa
 
 ### Changing options later
 
-**Settings → Devices & services → HomeStral → Configure** lets you change the model, agent and tool-loop bound. Changes are applied immediately.
+**Settings → Devices & services → HomeStral → Configure** lets you change the model, agent, tool-loop bound and the speech-to-text settings. Changes are applied immediately.
 
 ### Using HomeStral in Assist
 
@@ -73,6 +73,23 @@ Go to **Settings → Voice assistants**, create or edit an assistant and select:
 | Conversation agent | **Mistral Conversation** |
 | Speech-to-text | **Voxtral STT** |
 | Text-to-speech | **Voxtral TTS** |
+
+### Voice pipeline settings
+
+Speech-to-text runs in **realtime** mode by default: each utterance opens a Voxtral 3 realtime session, the pipeline audio is forwarded as it arrives and the session's turn detection ends the utterance as soon as you stop speaking. Keep the assistant's own voice activity detection enabled (the default) as a safety net; Voxtral usually finishes first.
+
+| Option | Default | Use |
+| --- | --- | --- |
+| Speech-to-text mode | realtime | `batch` uploads the whole recording once Home Assistant detects silence (no turn detection). |
+| Turn detection | default | `aggressive` ends turns sooner for short commands, at the price of more cut-offs when you pause; `off` leaves the end of the utterance to Home Assistant. |
+| Realtime streaming delay | 480 ms | 240 ms is faster but less accurate, 960 ms more accurate. |
+| Speech-to-text language | pipeline | `auto` lets Voxtral detect the language. |
+| Batch transcription model | mini | `small` is more accurate; used in batch mode and as the realtime fallback. |
+| Custom vocabulary | empty | Names and phrases to recognise, one per line or comma-separated. |
+| Recognise exposed entity, area and floor names | on | Adds those names to the recognition vocabulary (capped at 150 entries, refreshed every minute). |
+| Chat-audio fallback | off | Last resort when transcription returns nothing: slower, uses the Voxtral chat model. |
+
+The event `homestral_stt_eager_end` is fired when Voxtral believes you have probably finished speaking (before the confirmed end of turn); automations can use it to pre-warm something.
 
 ## Usage
 
@@ -121,7 +138,9 @@ data:
 | Chat (default) | `mistral-small-latest` | Mistral Small 4 — sub-second voice turns, Apache 2.0 |
 | Chat | `mistral-large-latest` | Mistral Large 4 — flagship, multimodal, 1M context |
 | Chat | `mistral-medium-latest` | Mistral Medium 3.5 |
-| Speech-to-text | `voxtral-mini-transcribe-3-0` | Voxtral Mini Transcribe 3, with chat-audio fallback |
+| Speech-to-text (realtime) | `voxtral-mini-transcribe-realtime-3-0` | Voxtral Mini Transcribe Realtime 3 over websocket, turn detection |
+| Speech-to-text (batch) | `voxtral-mini-transcribe-3-0` / `voxtral-small-transcribe-3-0` | Voxtral Mini / Small Transcribe 3, batch mode and realtime fallback |
+| Speech-to-text (last resort) | `voxtral-small-latest` | Chat completion with audio input, optional |
 | Text-to-speech | `voxtral-mini-tts-3-0` | Voxtral TTS 3, preset voices per language |
 
 Entries created with the former `mistral-large-4` id are mapped to `mistral-large-latest` automatically.

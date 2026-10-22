@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
+Phase 1 of the Voxtral 3 plan: listen. Speech-to-text now runs on Voxtral Mini Transcribe Realtime 3.
+
+### Added
+
+- **Realtime speech-to-text** (`voxtral_realtime.py`): each utterance opens a Voxtral 3 realtime websocket session; the pipeline audio (PCM 16 kHz) is forwarded as it arrives, Voxtral's turn detection ends the utterance on `turn.end` before Home Assistant's silence timeout, and the transcript is taken from `transcription.done`. HomeStral owns the socket (the SDK cannot send `language`, `context_bias` or `turn_detection`, which must precede the first chunk) and reuses the SDK models for every message.
+- **Recognition vocabulary from your home** (`context_builder.py`): the friendly names of the entities exposed to Assist, your area and floor names and your custom phrases are sent as multi-word `context_bias`, capped at 150 entries and refreshed every minute.
+- **Speech-to-text options**: mode (realtime or batch), turn-detection preset (off, default, aggressive), streaming delay (240, 480 or 960 ms), language (pipeline or auto), batch model (mini or small), custom vocabulary, entity-name biasing, chat-audio fallback. English and French descriptions.
+- **Event** `homestral_stt_eager_end` fired on Voxtral's `turn.eager_end`.
+
+### Changed
+
+- **Fallback chain**: realtime failure (connection, server error, timeout) falls back to file transcription with the audio captured so far plus the rest of the utterance; the chat-audio path is now opt-in.
+- **Language**: the pipeline language is sent as ISO 639-1 (`fr-FR` becomes `fr`); `auto` lets Voxtral detect it.
+- **Dependencies**: `pydub` removed (raw PCM goes straight to the API, the WAV fallback uses the standard library); the manifest requires `mistralai[realtime]==3.3.0` only.
+
+### Tests
+
+- 129 tests: `tests/test_realtime_session.py` drives the session against a fake websocket server (settings before audio, turn events, early end, errors, timeouts, rejected handshake), `tests/test_stt.py` covers the realtime path, the fallbacks and the options, `tests/test_context_builder.py` the vocabulary builder.
+
 ## [0.2.2] - 2026-10-22
 
 Foundations for Voxtral 3 (see `docs/voxtral3-integration-plan.md`); the realtime STT, streamed TTS and streamed reasoning land in the next releases.
