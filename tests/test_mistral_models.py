@@ -79,7 +79,7 @@ def test_manifest_requirements_and_version():
     assert manifest["version"] == "0.4.0"
     # The realtime extra brings websockets, sentence-stream splits the streamed answer into
     # sentences; pydub is gone (raw PCM goes straight to the API).
-    assert manifest["requirements"] == ["mistralai[realtime]==3.3.0", "sentence-stream==1.3.0"]
+    assert manifest["requirements"] == ["mistralai[realtime]==3.3.0", "sentence-stream>=1.3.0"]
 
 
 def test_tts_delivery_tag_values():
