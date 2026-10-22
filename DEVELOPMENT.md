@@ -63,9 +63,16 @@ The shared `MistralTurnRunner`, one per config entry (kept in `entry.runtime_dat
 - Automatic Home Assistant context injection (current time, local weather, available domains) into every request.
 - A tool-calling loop (bounded by the `max_tool_iterations` option) that executes FunctionTool calls through `HAToolExecutor` and appends the results to the conversation; built-in server-side tools (web search) are recognised and their answer returned.
 - The legacy `mistral-large-4` model id is mapped to `mistral-large-latest` (`const.resolve_chat_model`).
+- `async_run_streaming()`, now the path used by the conversation entity: it calls `chat_log.async_provide_llm_data()` to get the Home Assistant LLM API and system prompt, builds the Mistral tool list with `llm_tools.build_tools()`, opens `beta.conversations.start_stream_async` / `append_stream_async`, and maps the events (`conversation.response.started`, `message.output.delta`, `function.call.delta` accumulated per `output_index`, `tool.execution.done`, `conversation.response.error`, `conversation.response.done`) onto chat-log deltas consumed by `chat_log.async_add_delta_content_stream()`. `async_answer()` remains the non-streaming path used by the `HomestralQuery` intent.
+
+### `llm_tools.py`
+The bridge between the Home Assistant LLM API and Mistral function tools. It includes:
+- `ha_tool_to_mistral()`, which converts a Home Assistant `llm.Tool` to a Mistral `FunctionTool` with `voluptuous_openapi.convert`.
+- `build_tools()`, which assembles the tool list sent to Mistral: the Home Assistant tools first, then web search, then the optional legacy HomeStral tools; Home Assistant wins name collisions.
+- `ToolRouter`, which dispatches a call either to `llm_api.async_call_tool` or to `HAToolExecutor` and never raises.
 
 ### `conversation.py`
-The Home Assistant conversation entity: registers itself as the agent of the config entry, calls `MistralTurnRunner.async_answer()` with the Home Assistant `conversation_id`, appends the answer (or an error message) to the chat log and returns the result.
+The Home Assistant conversation entity: registers itself as the agent of the config entry, declares `supports_streaming`, hands the chat log and the user input to `MistralTurnRunner.async_run_streaming()` (which streams the answer and the tool calls into the log itself), turns any failure into an error message in the log, and returns the result built by `conversation.async_get_result_from_chat_log()`.
 
 ### `tools.py`
 This module defines the tool-calling layer used for voice-driven Home Assistant control. It includes:

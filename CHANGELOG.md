@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+Phase 3 of the Voxtral 3 plan: reason and act.
+
+### Added
+
+- **Streamed answers**: the conversation entity now reports `supports_streaming`, pushing the answer into the Home Assistant chat log as it is generated. Combined with the streamed text-to-speech of 0.4.0, the assistant starts speaking before the model has finished writing, and tool calls appear live in the conversation trace.
+- **Home Assistant LLM API**: the model now acts through Home Assistant's own tools (`HassTurnOn`, `HassSetPosition`, `HassClimateSetTemperature`, `GetLiveContext`, calendar and todo helpers…) like the core OpenAI, Anthropic and Google integrations. This honours the per-entity "exposed to Assist" setting and resolves the area of the speaking satellite, so "allume la lumière ici" works without listing entity ids in the prompt.
+- **New options**: Home Assistant control (which LLM APIs to expose, `assist` by default), legacy HomeStral tools (off for new installs), and custom instructions replacing the built-in prompt.
+
+### Changed
+
+- **Prompt**: rewritten for voice — short spoken sentences, no markdown, and a trailing question only when a clarification is genuinely needed (which is what keeps the microphone open through `continue_conversation`). The entity-domain listing is only sent to entries that still use the legacy tools, since `GetLiveContext` provides live state.
+- **Legacy tools deprecated as model tools**: `control_ha_device`, `get_ha_state` and `list_ha_entities` bypass the exposure settings, so they are now opt-in. The `homestral.control_device` service is unchanged.
+- **Config entry version 2**: entries created before this release are migrated automatically and keep the legacy tools enabled alongside the Assist API, so nothing breaks on upgrade.
+
+### Tests
+
+- 169 tests: `tests/test_llm_tools.py` covers the tool bridge (schema conversion, name collisions, routing, failures), `tests/test_real_world_scenarios.py` drives whole turns through scripted conversation streams (two tools in one turn, incremental arguments, server-side web search, unknown tool refused, bounded loop), and `tests/conftest.py` adds the shared chat-log and LLM API fakes.
+
 ## [0.4.0] - 2026-10-22
 
 Phase 2 of the Voxtral 3 plan: speak.
