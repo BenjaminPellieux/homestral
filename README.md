@@ -30,7 +30,7 @@ HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a co
 
 ## Requirements
 
-- Home Assistant **2025.11** or newer.
+- Home Assistant **2026.2.3** or newer (the version the integration is tested against; streamed speech and the LLM API plumbing it relies on are younger than 2025.11).
 - A Mistral AI API key from [console.mistral.ai](https://console.mistral.ai) with access to the Mistral Large and Voxtral models.
 
 ## Installation
@@ -101,6 +101,7 @@ The voice is chosen per Assist pipeline (**Settings → Voice assistants → you
 | Default emotion | none | One of the 34 documented emotions (`calm`, `warm`, `urgent`, `playful`, …) applied to every answer. |
 | Default speaking pace | none | `very-slow`, `slow`, `moderate`, `fast` or `very-fast`. |
 | Expressiveness | 0 | `0` keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability. |
+| Custom pronunciations | empty | One `word=IPA` per line, for example `Pellieux=p ɛ l j ø`, for names the voice keeps mangling. |
 
 For a one-off announcement, `tts.speak` accepts `emotion` and `pace` in its options:
 
@@ -130,6 +131,7 @@ The model controls your home through Home Assistant's own Assist tools. Two cons
 | Home Assistant control | `assist` | Which Home Assistant API the model may act through. Clearing it leaves the model with no way to act (answers only). |
 | Legacy HomeStral tools | off | Also send `control_ha_device`, `get_ha_state` and `list_ha_entities`. They reach entities that are **not** exposed to Assist, so they stay off unless you upgraded from 0.4.0 or earlier, where they were the only way to act. |
 | Custom instructions | empty | Replaces HomeStral's built-in prompt. Empty keeps it (short spoken answers, current time, local weather, tool guidance). |
+| Confirm sensitive actions | off | Requires a spoken confirmation before unlocking a door, disarming an alarm or opening a cover: the assistant asks, the microphone stays open, and the action runs only after you answer. |
 
 Upgrading from an earlier release keeps the legacy tools enabled so nothing stops working; turn them off once you have exposed the entities you want the assistant to reach. The `homestral.control_device` service is unaffected either way.
 
