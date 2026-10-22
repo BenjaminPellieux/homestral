@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Install the development dependencies, including the exact hassil /
-# home-assistant-intents versions pinned by the installed Home Assistant
-# release (the conversation component imports them at collection time).
+# Install the development dependencies, including the exact versions of the
+# Home Assistant component requirements pinned by the installed Home Assistant
+# release: hassil / home-assistant-intents for `conversation`, mutagen for `tts`
+# and ha-ffmpeg for `ffmpeg` (imported by `tts`). The components import them at
+# collection time.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,17 +13,22 @@ PYTHON="${PYTHON:-python}"
 "$PYTHON" -m pip install --upgrade pip
 "$PYTHON" -m pip install -r requirements.txt
 
-# Read the manifest by path: importing the component itself already needs hassil.
-conversation_requirements=$("$PYTHON" - <<'EOF'
+# Read the manifests by path: importing the components themselves already needs
+# their requirements.
+component_requirements=$("$PYTHON" - <<'EOF'
 import json
 from pathlib import Path
 
 import homeassistant
 
-manifest = Path(homeassistant.__file__).parent / "components" / "conversation" / "manifest.json"
-print(" ".join(json.loads(manifest.read_text())["requirements"]))
+components = Path(homeassistant.__file__).parent / "components"
+requirements: list[str] = []
+for component in ("conversation", "tts", "ffmpeg"):
+    manifest = components / component / "manifest.json"
+    requirements.extend(json.loads(manifest.read_text())["requirements"])
+print(" ".join(requirements))
 EOF
 )
 
 # shellcheck disable=SC2086
-"$PYTHON" -m pip install $conversation_requirements
+"$PYTHON" -m pip install $component_requirements

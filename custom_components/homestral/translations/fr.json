@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connexion à Mistral AI",
-        "description": "Saisissez votre clé API Mistral AI. La reconnaissance vocale (Voxtral 2) et la synthèse vocale (Voxtral TTS) sont configurées automatiquement avec la même clé.",
+        "description": "Saisissez votre clé API Mistral AI. La reconnaissance vocale (Voxtral 3) et la synthèse vocale (Voxtral TTS 3) sont configurées automatiquement avec la même clé.",
         "data": {
           "api_key": "Clé API Mistral",
           "use_agent": "Utiliser un agent Mistral",
