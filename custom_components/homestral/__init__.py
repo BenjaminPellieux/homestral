@@ -9,7 +9,14 @@ from homeassistant.helpers.typing import ConfigType
 
 from .agent import HomestralRuntime, MistralTurnRunner
 from .api_control import async_setup_api_control
-from .const import CONF_API_KEY, DOMAIN, PLATFORMS
+from .const import (
+    CONF_API_KEY,
+    CONF_LEGACY_TOOLS,
+    CONF_LLM_HASS_API,
+    DEFAULT_LLM_HASS_API,
+    DOMAIN,
+    PLATFORMS,
+)
 from .helpers import create_mistral_client, install_custom_sentences
 from .intent import async_setup_intents
 
@@ -36,6 +43,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.services.async_call("conversation", "reload", blocking=True)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate an older config entry.
+
+    Version 1 entries predate the Home Assistant LLM API: the model acted through
+    HomeStral's own tools, which bypass the "exposed to Assist" setting. They keep
+    those tools so nothing breaks on upgrade, alongside the Assist API; new installs
+    use the Assist API alone.
+    """
+    if entry.version > 2:
+        # Downgrade from a future version is not supported.
+        return False
+
+    if entry.version == 1:
+        options = {
+            **entry.options,
+            CONF_LLM_HASS_API: entry.options.get(CONF_LLM_HASS_API, list(DEFAULT_LLM_HASS_API)),
+            CONF_LEGACY_TOOLS: entry.options.get(CONF_LEGACY_TOOLS, True),
+        }
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+
     return True
 
 

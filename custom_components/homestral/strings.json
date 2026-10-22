@@ -10,14 +10,20 @@
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
           "model": "Chat model",
-          "max_tool_iterations": "Maximum tool calls per request"
+          "max_tool_iterations": "Maximum tool calls per request",
+          "llm_hass_api": "Home Assistant control",
+          "legacy_tools": "Legacy HomeStral tools",
+          "prompt": "Custom instructions"
         },
         "data_description": {
           "api_key": "Create a key at console.mistral.ai with access to the Mistral Large and Voxtral models.",
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
           "model": "Mistral chat model used for conversations and voice queries.",
-          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10).",
+          "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
+          "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance)."
         }
       }
     },
@@ -50,7 +56,10 @@
           "tts_voice": "Default voice",
           "tts_default_emotion": "Default emotion",
           "tts_default_pace": "Default speaking pace",
-          "tts_expressiveness": "Expressiveness"
+          "tts_expressiveness": "Expressiveness",
+          "llm_hass_api": "Home Assistant control",
+          "legacy_tools": "Legacy HomeStral tools",
+          "prompt": "Custom instructions"
         },
         "data_description": {
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
@@ -68,7 +77,10 @@
           "tts_voice": "Voxtral voice id used when the Assist pipeline does not select one, for example voice_592 (Marie, French). Leave empty to use the first preset voice of the spoken language.",
           "tts_default_emotion": "Delivery applied to every answer, for example calm or warm. Tested in English, expected to work in French.",
           "tts_default_pace": "Speaking rate applied to every answer, from very-slow to very-fast.",
-          "tts_expressiveness": "0 keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability."
+          "tts_expressiveness": "0 keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability.",
+          "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
+          "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance)."
         }
       }
     }

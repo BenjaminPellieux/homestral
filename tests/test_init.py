@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.homestral import async_setup_entry
+from custom_components.homestral import async_migrate_entry, async_setup_entry
 from custom_components.homestral.helpers import create_mistral_client
 
 
@@ -89,3 +89,57 @@ async def test_async_setup_entry_installs_custom_sentences_once(tmp_path):
 
     assert fr.read_text(encoding="utf-8") == "language: fr\nintents: {}\n"
     hass.services.async_call.assert_not_awaited()
+
+
+def _make_migration_hass():
+    hass = MagicMock()
+    hass.config_entries.async_update_entry = MagicMock()
+    return hass
+
+
+def _make_migration_entry(version, options):
+    entry = MagicMock()
+    entry.version = version
+    entry.options = options
+    return entry
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_entry_v1_upgrades_to_v2_with_defaults():
+    hass = _make_migration_hass()
+    entry = _make_migration_entry(1, {})
+
+    result = await async_migrate_entry(hass, entry)
+
+    assert result is True
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry,
+        options={"llm_hass_api": ["assist"], "legacy_tools": True},
+        version=2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_entry_v1_keeps_legacy_tools_disabled():
+    hass = _make_migration_hass()
+    entry = _make_migration_entry(1, {"legacy_tools": False})
+
+    result = await async_migrate_entry(hass, entry)
+
+    assert result is True
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry,
+        options={"legacy_tools": False, "llm_hass_api": ["assist"]},
+        version=2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_entry_rejects_newer_version():
+    hass = _make_migration_hass()
+    entry = _make_migration_entry(3, {})
+
+    result = await async_migrate_entry(hass, entry)
+
+    assert result is False
+    hass.config_entries.async_update_entry.assert_not_called()

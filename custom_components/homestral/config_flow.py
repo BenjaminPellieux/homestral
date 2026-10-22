@@ -9,13 +9,18 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import llm
 
 from .const import (
     AVAILABLE_CHAT_MODELS,
     CONF_AGENT_ID,
     CONF_API_KEY,
+    CONF_LEGACY_TOOLS,
+    CONF_LLM_HASS_API,
     CONF_MAX_TOOL_ITERATIONS,
     CONF_MODEL,
+    CONF_PROMPT,
     CONF_STT_BATCH_MODEL,
     CONF_STT_BIAS_ENTITIES,
     CONF_STT_CHAT_FALLBACK,
@@ -30,8 +35,11 @@ from .const import (
     CONF_TTS_VOICE,
     CONF_USE_AGENT,
     DEFAULT_CHAT_MODEL,
+    DEFAULT_LEGACY_TOOLS,
+    DEFAULT_LLM_HASS_API,
     DEFAULT_MAX_TOOL_ITERATIONS,
     DEFAULT_NAME,
+    DEFAULT_PROMPT,
     DEFAULT_STT_BATCH_MODEL,
     DEFAULT_STT_BIAS_ENTITIES,
     DEFAULT_STT_CHAT_FALLBACK,
@@ -72,7 +80,7 @@ class CannotConnect(Exception):
     """Mistral could not be reached."""
 
 
-def _chat_options_schema(defaults: Mapping[str, Any]) -> dict:
+def _chat_options_schema(defaults: Mapping[str, Any], api_ids: list[str] | None = None) -> dict:
     return {
         vol.Optional(CONF_USE_AGENT, default=defaults.get(CONF_USE_AGENT, False)): bool,
         vol.Optional(CONF_AGENT_ID, default=defaults.get(CONF_AGENT_ID, "")): str,
@@ -84,6 +92,11 @@ def _chat_options_schema(defaults: Mapping[str, Any]) -> dict:
             CONF_MAX_TOOL_ITERATIONS,
             default=defaults.get(CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS),
         ): vol.All(vol.Coerce(int), vol.Range(min=MIN_TOOL_ITERATIONS, max=MAX_TOOL_ITERATIONS)),
+        vol.Optional(
+            CONF_LLM_HASS_API, default=defaults.get(CONF_LLM_HASS_API, list(DEFAULT_LLM_HASS_API))
+        ): cv.multi_select({api: api for api in sorted(api_ids or DEFAULT_LLM_HASS_API)}),
+        vol.Optional(CONF_LEGACY_TOOLS, default=defaults.get(CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS)): bool,
+        vol.Optional(CONF_PROMPT, default=defaults.get(CONF_PROMPT, DEFAULT_PROMPT)): str,
     }
 
 
@@ -138,9 +151,13 @@ def _tts_options_schema(defaults: Mapping[str, Any]) -> dict:
     }
 
 
-def _options_schema(defaults: Mapping[str, Any]) -> vol.Schema:
+def _options_schema(defaults: Mapping[str, Any], api_ids: list[str] | None = None) -> vol.Schema:
     return vol.Schema(
-        {**_chat_options_schema(defaults), **_stt_options_schema(defaults), **_tts_options_schema(defaults)}
+        {
+            **_chat_options_schema(defaults, api_ids),
+            **_stt_options_schema(defaults),
+            **_tts_options_schema(defaults),
+        }
     )
 
 
@@ -162,7 +179,7 @@ def _validate_api_key(api_key: str) -> None:
 class HomestralConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the initial HomeStral setup."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -197,4 +214,5 @@ class HomestralOptionsFlow(OptionsFlow):
             return self.async_create_entry(data=user_input)
 
         current = {**self.config_entry.data, **self.config_entry.options}
-        return self.async_show_form(step_id="init", data_schema=_options_schema(current))
+        api_ids = [api.id for api in llm.async_get_apis(self.hass)]
+        return self.async_show_form(step_id="init", data_schema=_options_schema(current, api_ids))
