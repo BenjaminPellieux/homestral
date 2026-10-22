@@ -7,9 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-22
+
+Foundations for Voxtral 3 (see `docs/voxtral3-integration-plan.md`); the realtime STT, streamed TTS and streamed reasoning land in the next releases.
+
 ### Changed
 
+- **Models**: speech-to-text now uses `voxtral-mini-transcribe-3-0` (Voxtral Mini Transcribe 3) and text-to-speech `voxtral-mini-tts-3-0` (Voxtral TTS 3). The default chat model for new installs is `mistral-small-latest` (Mistral Small 4, the model Mistral runs in its own voice pipeline); `mistral-large-latest` and `mistral-medium-latest` stay selectable. The undocumented `mistral-large-4` id is mapped to `mistral-large-latest` for existing entries.
+- **Vocabulary**: the speech-to-text `context_bias` list now holds multi-word phrases (Voxtral 3), such as "volet roulant".
+- **Dependencies**: `mistralai[realtime]==3.3.0` (the `realtime` extra brings the websocket client used by the next release); `scripts/setup` also installs the `tts` and `ffmpeg` component requirements so the TTS tests run.
 - **Brand**: replaced the placeholder icon with the HomeStral logo (a pixel-art Mistral cat inside a Home Assistant house), shipped as SVG sources plus `icon.png`, `icon@2x.png`, `logo.png` and `logo@2x.png`.
+- **Internals**: the conversation entity and the `HomestralQuery` intent share one `MistralTurnRunner` (`agent.py`); SDK calls are awaited directly instead of being wrapped in executors; SDK models are imported from `mistralai.client.models` only.
+
+### Fixed
+
+- **Text-to-speech**: the speech API returns the audio as base64 text; it is now decoded before being handed to Home Assistant (playback failed before). A real preset voice (`voice_592`, Marie) is sent instead of an undocumented id, and the pipeline voice option is honoured.
+- **Conversations**: every Home Assistant conversation (user, device, satellite) now gets its own Mistral conversation instead of all sharing one thread; idle threads are dropped after 30 minutes.
+
+### Added
+
+- `scripts/smoke_voxtral3.py`: manual end-to-end check of the Voxtral 3 stack with a real API key (model ids, TTS payload format, batch and realtime transcription, conversation streaming events). Never run in CI.
+
+### Tests
+
+- 98 tests: new `tests/test_tts.py`, `tests/test_agent.py` and `tests/test_config_flow.py`; the conversation and intent tests target the shared runner.
 
 ## [0.2.1] - 2026-10-13
 
