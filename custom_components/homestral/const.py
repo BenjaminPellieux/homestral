@@ -123,8 +123,14 @@ HOME_AUTOMATION_VOCAB = [
 
 # TTS — Voxtral TTS 3 via /v1/audio/speech (24 kHz mono output)
 DEFAULT_TTS_MODEL = "voxtral-mini-tts-3-0"
-DEFAULT_TTS_FORMAT = "wav"
+DEFAULT_TTS_FORMAT = "wav"  # non-streaming path: one request, cacheable by Home Assistant
 DEFAULT_TTS_LANGUAGE = "fr"
+# Streaming path: pcm chunks (time to first audio ~0.8 s against ~3 s for mp3) wrapped in a
+# streaming WAV header. Voxtral TTS 3 always returns 24 kHz, 16-bit, mono.
+TTS_STREAM_FORMAT = "pcm"
+TTS_SAMPLE_RATE = 24000
+TTS_SAMPLE_WIDTH = 2
+TTS_CHANNELS = 1
 # Voxtral 3 preset voices (https://docs.mistral.ai/studio/audio/text-to-speech/voices).
 # language -> [(voice_id, name)]; the first entry is the default voice for that language.
 TTS_VOICES: dict[str, list[tuple[str, str]]] = {
@@ -147,6 +153,67 @@ TTS_VOICES: dict[str, list[tuple[str, str]]] = {
     "ar": [("voice_479", "Maryam")],
     "hi": [("voice_3139", "Ananya"), ("voice_3153", "Himanshu")],
 }
+
+# Inline delivery tags (https://docs.mistral.ai/studio/audio/text-to-speech/emotion-tags).
+# Written as [emotion=<value>] / [pace=<value>] at the start of the text they apply to.
+# Tested in English, expected but untested in fr/de/es/it/pt/hi.
+TTS_EMOTIONS = [
+    "amused",
+    "angry",
+    "anxious",
+    "apologetic",
+    "appreciative",
+    "assertive",
+    "bored",
+    "calm",
+    "confident",
+    "confused",
+    "critical",
+    "curious",
+    "determined",
+    "disappointed",
+    "disgusted",
+    "excited",
+    "frustrated",
+    "grateful",
+    "happy",
+    "hopeful",
+    "playful",
+    "proud",
+    "reflective",
+    "resigned",
+    "sad",
+    "sarcastic",
+    "skeptical",
+    "somber",
+    "surprised",
+    "tense",
+    "tired",
+    "urgent",
+    "warm",
+    "wistful",
+]
+TTS_PACES = ["very-slow", "slow", "moderate", "fast", "very-fast"]
+TTS_NONE = "none"  # "no default emotion / pace" choice in the options form
+
+# TTS options
+CONF_TTS_VOICE = "tts_voice"  # per-entry default voice id ("" = first preset of the language)
+DEFAULT_TTS_VOICE = ""
+CONF_TTS_EXPRESSIVENESS = "tts_expressiveness"  # 1.0 to 5.0; 0 means "let the service decide"
+DEFAULT_TTS_EXPRESSIVENESS = 0.0
+MIN_TTS_EXPRESSIVENESS = 1.0
+MAX_TTS_EXPRESSIVENESS = 5.0
+CONF_TTS_DEFAULT_EMOTION = "tts_default_emotion"
+DEFAULT_TTS_EMOTION = TTS_NONE
+CONF_TTS_DEFAULT_PACE = "tts_default_pace"
+DEFAULT_TTS_PACE = TTS_NONE
+# Per-request options accepted from tts.speak / the Assist pipeline
+TTS_OPTION_EMOTION = "emotion"
+TTS_OPTION_PACE = "pace"
+# Sentence batching while the conversation answer is still streaming: synthesize the first
+# sentence immediately, then up to 3, then everything available (same schedule as HA core's
+# ElevenLabs integration).
+TTS_SENTENCE_SCHEDULE = [1, 3]
 
 # Custom HA FunctionTool names
 TOOL_GET_HA_STATE = "get_ha_state"

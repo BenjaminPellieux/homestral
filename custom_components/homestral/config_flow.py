@@ -24,6 +24,10 @@ from .const import (
     CONF_STT_MODE,
     CONF_STT_STREAMING_DELAY_MS,
     CONF_STT_TURN_DETECTION,
+    CONF_TTS_DEFAULT_EMOTION,
+    CONF_TTS_DEFAULT_PACE,
+    CONF_TTS_EXPRESSIVENESS,
+    CONF_TTS_VOICE,
     CONF_USE_AGENT,
     DEFAULT_CHAT_MODEL,
     DEFAULT_MAX_TOOL_ITERATIONS,
@@ -36,14 +40,23 @@ from .const import (
     DEFAULT_STT_MODE,
     DEFAULT_STT_STREAMING_DELAY_MS,
     DEFAULT_STT_TURN_DETECTION,
+    DEFAULT_TTS_EMOTION,
+    DEFAULT_TTS_EXPRESSIVENESS,
+    DEFAULT_TTS_PACE,
+    DEFAULT_TTS_VOICE,
     DOMAIN,
     MAX_TOOL_ITERATIONS,
+    MAX_TTS_EXPRESSIVENESS,
     MIN_TOOL_ITERATIONS,
+    MIN_TTS_EXPRESSIVENESS,
     STT_BATCH_MODELS,
     STT_LANGUAGE_CHOICES,
     STT_MODES,
     STT_STREAMING_DELAY_CHOICES,
     STT_TURN_DETECTION_CHOICES,
+    TTS_EMOTIONS,
+    TTS_NONE,
+    TTS_PACES,
     resolve_chat_model,
 )
 from .helpers import create_mistral_client
@@ -103,8 +116,32 @@ def _stt_options_schema(defaults: Mapping[str, Any]) -> dict:
     }
 
 
+def _tts_options_schema(defaults: Mapping[str, Any]) -> dict:
+    return {
+        vol.Optional(CONF_TTS_VOICE, default=defaults.get(CONF_TTS_VOICE, DEFAULT_TTS_VOICE)): str,
+        vol.Optional(
+            CONF_TTS_DEFAULT_EMOTION, default=defaults.get(CONF_TTS_DEFAULT_EMOTION, DEFAULT_TTS_EMOTION)
+        ): vol.In([TTS_NONE, *TTS_EMOTIONS]),
+        vol.Optional(CONF_TTS_DEFAULT_PACE, default=defaults.get(CONF_TTS_DEFAULT_PACE, DEFAULT_TTS_PACE)): vol.In(
+            [TTS_NONE, *TTS_PACES]
+        ),
+        # 0 keeps the service default; otherwise the documented 1.0 to 5.0 range.
+        vol.Optional(
+            CONF_TTS_EXPRESSIVENESS, default=defaults.get(CONF_TTS_EXPRESSIVENESS, DEFAULT_TTS_EXPRESSIVENESS)
+        ): vol.All(
+            vol.Coerce(float),
+            vol.Any(
+                DEFAULT_TTS_EXPRESSIVENESS,
+                vol.Range(min=MIN_TTS_EXPRESSIVENESS, max=MAX_TTS_EXPRESSIVENESS),
+            ),
+        ),
+    }
+
+
 def _options_schema(defaults: Mapping[str, Any]) -> vol.Schema:
-    return vol.Schema({**_chat_options_schema(defaults), **_stt_options_schema(defaults)})
+    return vol.Schema(
+        {**_chat_options_schema(defaults), **_stt_options_schema(defaults), **_tts_options_schema(defaults)}
+    )
 
 
 # The initial form asks for the key and the chat settings only; STT settings live in the options flow.
