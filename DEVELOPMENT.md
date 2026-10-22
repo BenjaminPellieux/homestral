@@ -8,7 +8,7 @@ This guide provides technical details about the HomeStral project, including its
 ### High-Level Architecture
 HomeStral is a Home Assistant integration that leverages Mistral AI for voice control and intelligent automation. The architecture consists of the following main components:
 
-1. **STT (Speech-to-Text)**: Handles audio processing and transcription using Voxtral 3 (Voxtral Mini Transcribe 3, `voxtral-mini-transcribe-3-0`) via `/v1/audio/transcriptions`, with multi-word home-automation context biasing.
+1. **STT (Speech-to-Text)**: Streams the pipeline audio to a Voxtral Mini Transcribe Realtime 3 websocket session with turn detection (`voxtral_realtime.py`), with file transcription (`voxtral-mini-transcribe-3-0` or the Small model) as fallback; the recognition vocabulary comes from the exposed entities, areas, floors and custom phrases (`context_builder.py`).
 2. **TTS (Text-to-Speech)**: Synthesizes speech using Voxtral TTS 3 (`voxtral-mini-tts-3-0`) via `/v1/audio/speech`, with preset voices per language.
 3. **Conversation**: The `MistralTurnRunner` (`agent.py`) runs every turn against the Mistral Conversations API, including the tool-calling loop and automatic Home Assistant context injection, with one Mistral conversation per Home Assistant conversation. The conversation entity and the `HomestralQuery` intent are thin wrappers around it.
 4. **Tools**: Defines the Home Assistant FunctionTools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) and executes them against the live HA state via `HAToolExecutor`.
@@ -33,9 +33,10 @@ scripts/setup                  dev dependency installer
 
 #### STT Data Flow
 1. **Audio Input**: Audio data is captured from the user's microphone.
-2. **Audio Processing**: The audio data is processed and converted to the required format (WAV, PCM, 16kHz, 16-bit, mono).
-3. **API Call**: The processed audio is sent to the Voxtral 3 transcription endpoint (`/v1/audio/transcriptions`, model `voxtral-mini-transcribe-3-0`) with a home-automation `context_bias` vocabulary (multi-word phrases) to improve recognition of device names and commands. If the endpoint returns no text, the chat API with audio input (`voxtral-small-latest`) is used as a fallback.
-4. **Transcription**: The transcribed text is returned and used for further processing.
+2. **Vocabulary**: `context_builder.async_stt_vocabulary()` builds the `context_bias` list (custom phrases, built-in home-automation vocabulary, area and floor names, friendly names of the entities exposed to Assist), capped at 150 entries and cached for a minute.
+3. **Realtime session** (default mode): `RealtimeSession` opens `wss://api.mistral.ai/v1/audio/transcriptions/realtime`, waits for `session.created`, sends one `session.update` with the audio format (PCM 16 kHz, what Home Assistant delivers), the streaming delay, the language, the vocabulary and the turn-detection preset, then forwards the pipeline chunks as `input_audio.append` while collecting `transcription.text.delta` events. On `turn.end` the sender stops and `input_audio.end` is sent; on the pipeline's own end of audio the same happens. The transcript is `transcription.done`. `turn.eager_end` fires the `homestral_stt_eager_end` event.
+4. **Fallbacks**: a connection error, a server `error` event or a timeout makes the entity transcribe the audio kept aside (plus the rest of the utterance) through `/v1/audio/transcriptions` (WAV built with the standard library). If that returns nothing and the option is enabled, the chat API with audio input (`voxtral-small-latest`) is the last resort.
+5. **Transcription**: The transcribed text is returned to the pipeline.
 
 #### Conversation Data Flow
 1. **User Input**: The user provides input via voice or text.
@@ -48,10 +49,13 @@ scripts/setup                  dev dependency installer
 ## Modules
 
 ### `stt.py`
-This module handles speech-to-text functionality using Voxtral 3 (Voxtral Mini Transcribe 3). It includes:
-- Audio processing and format conversion (WAV, PCM, 16kHz, 16-bit, mono).
-- Transcription via the Voxtral 3 endpoint (`/v1/audio/transcriptions`, `voxtral-mini-transcribe-3-0`) with home-automation `context_bias` vocabulary and support for 13 languages, with a fallback to the chat API with audio input.
-- Error handling and logging.
+The `SpeechToTextEntity` (PCM 16 kHz, 16-bit, mono, 13 languages). `async_process_audio_stream()` runs the realtime session (`_transcribe_realtime`, with `_pump_audio` forwarding the chunks and `_collect_transcript` consuming the events), then the batch fallback (`_transcribe_batch`) and the optional chat-audio fallback (`_transcribe_chat`). Timeouts: 60 s for a whole realtime utterance, 10 s for `transcription.done` after `input_audio.end`, 30 s per batch request.
+
+### `voxtral_realtime.py`
+`RealtimeSession`, one websocket session per utterance, built on the `websockets` library (installed by the `mistralai[realtime]` extra) and the SDK pydantic models (`RealtimeTranscriptionSessionUpdateMessage`, `RealtimeTranscriptionInputAudioAppend`, `TurnDetection*Event`, ...). It validates the documented constraints before connecting (streaming delay 80 to 1200 ms or 2400 ms, turn-detection thresholds), sends every setting before the first chunk, and parses the `turn.*` events the SDK parser does not know. `TURN_PRESETS` holds the documented default and aggressive presets.
+
+### `context_builder.py`
+`async_stt_vocabulary()` (the `context_bias` list described above) and `build_ha_context()` (the system prompt: current time, local weather, available domains, tool instructions).
 
 ### `agent.py`
 The shared `MistralTurnRunner`, one per config entry (kept in `entry.runtime_data`, a `HomestralRuntime` holding the Mistral client and the runner). It includes:
@@ -59,9 +63,16 @@ The shared `MistralTurnRunner`, one per config entry (kept in `entry.runtime_dat
 - Automatic Home Assistant context injection (current time, local weather, available domains) into every request.
 - A tool-calling loop (bounded by the `max_tool_iterations` option) that executes FunctionTool calls through `HAToolExecutor` and appends the results to the conversation; built-in server-side tools (web search) are recognised and their answer returned.
 - The legacy `mistral-large-4` model id is mapped to `mistral-large-latest` (`const.resolve_chat_model`).
+- `async_run_streaming()`, now the path used by the conversation entity: it calls `chat_log.async_provide_llm_data()` to get the Home Assistant LLM API and system prompt, builds the Mistral tool list with `llm_tools.build_tools()`, opens `beta.conversations.start_stream_async` / `append_stream_async`, and maps the events (`conversation.response.started`, `message.output.delta`, `function.call.delta` accumulated per `output_index`, `tool.execution.done`, `conversation.response.error`, `conversation.response.done`) onto chat-log deltas consumed by `chat_log.async_add_delta_content_stream()`. `async_answer()` remains the non-streaming path used by the `HomestralQuery` intent.
+
+### `llm_tools.py`
+The bridge between the Home Assistant LLM API and Mistral function tools. It includes:
+- `ha_tool_to_mistral()`, which converts a Home Assistant `llm.Tool` to a Mistral `FunctionTool` with `voluptuous_openapi.convert`.
+- `build_tools()`, which assembles the tool list sent to Mistral: the Home Assistant tools first, then web search, then the optional legacy HomeStral tools; Home Assistant wins name collisions.
+- `ToolRouter`, which dispatches a call either to `llm_api.async_call_tool` or to `HAToolExecutor` and never raises.
 
 ### `conversation.py`
-The Home Assistant conversation entity: registers itself as the agent of the config entry, calls `MistralTurnRunner.async_answer()` with the Home Assistant `conversation_id`, appends the answer (or an error message) to the chat log and returns the result.
+The Home Assistant conversation entity: registers itself as the agent of the config entry, declares `supports_streaming`, hands the chat log and the user input to `MistralTurnRunner.async_run_streaming()` (which streams the answer and the tool calls into the log itself), turns any failure into an error message in the log, and returns the result built by `conversation.async_get_result_from_chat_log()`.
 
 ### `tools.py`
 This module defines the tool-calling layer used for voice-driven Home Assistant control. It includes:
@@ -70,9 +81,9 @@ This module defines the tool-calling layer used for voice-driven Home Assistant 
 - `build_ha_context()`, which builds the system instructions injected into every conversation.
 
 ### `tts.py`
-This module provides the Voxtral text-to-speech platform. It includes:
-- A `TextToSpeechEntity` that synthesizes speech with Voxtral TTS (`voxtral-mini-tts-2603`) via the `/v1/audio/speech` endpoint.
-- Multi-language voice output (French by default).
+This module provides the Voxtral text-to-speech platform (`VoxtralTtsProvider`, a `TextToSpeechEntity` synthesizing speech with Voxtral TTS 3 `voxtral-mini-tts-3-0` via the `/v1/audio/speech` endpoint, multi-language with French by default). Both paths share the voice resolution (the per-request `voice` option, else the configured default, else the first preset of the language) and the `[emotion=...]` / `[pace=...]` delivery-tag prefix prepended to the text. It includes:
+- `async_stream_tts_audio` — the Assist pipeline path. The streamed answer is split into sentences with `sentence_stream.SentenceBoundaryDetector` and batched on a 1, then 3, then all-sentences schedule, so the first words play early while later batches grow for fewer requests and better prosody. Each batch is synthesized with `speech.complete_async(stream=True, response_format="pcm")` and the base64 `speech.audio.delta` chunks are decoded. The audio is returned as one streaming WAV: a single header with `nframes=0` (24 kHz, 16-bit, mono) followed by the raw PCM, so playback starts before the answer is finished. An error after audio has started truncates the answer; an error before any audio raises `HomeAssistantError`.
+- `async_get_tts_audio` — the one-shot path (`tts.speak`, cached phrases): a single `wav` request, cacheable by Home Assistant.
 
 ### `api_control.py`
 This module implements the lower-level device control layer used by the tools. It includes:
@@ -111,8 +122,8 @@ All network calls use the `*_async` methods of the SDK and are awaited in the ev
 ## Development Setup
 
 ### Prerequisites
-- Python 3.13 or higher (required by Home Assistant 2025.11+)
-- Home Assistant 2025.11 or higher (running in Docker or native)
+- Python 3.13 or higher (required by Home Assistant 2026.2+)
+- Home Assistant 2026.2.3 or higher (running in Docker or native)
 - Mistral AI API key with access to the `mistral-large` and `voxtral` models
 
 ### Installation

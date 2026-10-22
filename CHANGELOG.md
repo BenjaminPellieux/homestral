@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
+Phase 4 of the Voxtral 3 plan: polish.
+
+### Added
+
+- **Spoken confirmation for sensitive actions** (optional, off by default): when on, unlocking a door, disarming an alarm or opening a cover is refused until the assistant has asked and you have answered. The refusal is handed back to the model, which then asks, so it is a guard rather than a suggestion in the prompt.
+- **Custom pronunciations**: teach the voice how to say a name with one `word=IPA` entry per line, sent to Voxtral as `phoneme_hints`.
+- **Diagnostics**: downloading diagnostics for the entry returns its data, options, version and runtime cache keys, with the API key redacted.
+
+### Changed
+
+- **Minimum Home Assistant version is now 2026.2.3** in `hacs.json`, `README.md` and `DEVELOPMENT.md`. The previous 2025.11.0 floor was never tested and is older than the streamed-speech and LLM API plumbing the integration relies on. The test workflow now runs twice, once against that exact floor and once against the latest release, so the promise is checked.
+- **Changelog**: the 0.0.1 and 0.0.2 entries carried invented 2023 dates, two years before the first commit; they are marked as pre-release instead.
+
+### Tests
+
+- 185 tests: `tests/test_safety.py` covers the confirmation guard (which tools and domains count as sensitive, how a question is detected, the refusal payload) and `tests/test_diagnostics.py` asserts the API key never reaches a report.
+
+## [0.5.0] - 2026-10-22
+
+Phase 3 of the Voxtral 3 plan: reason and act.
+
+### Added
+
+- **Streamed answers**: the conversation entity now reports `supports_streaming`, pushing the answer into the Home Assistant chat log as it is generated. Combined with the streamed text-to-speech of 0.4.0, the assistant starts speaking before the model has finished writing, and tool calls appear live in the conversation trace.
+- **Home Assistant LLM API**: the model now acts through Home Assistant's own tools (`HassTurnOn`, `HassSetPosition`, `HassClimateSetTemperature`, `GetLiveContext`, calendar and todo helpers…) like the core OpenAI, Anthropic and Google integrations. This honours the per-entity "exposed to Assist" setting and resolves the area of the speaking satellite, so "allume la lumière ici" works without listing entity ids in the prompt.
+- **New options**: Home Assistant control (which LLM APIs to expose, `assist` by default), legacy HomeStral tools (off for new installs), and custom instructions replacing the built-in prompt.
+
+### Changed
+
+- **Prompt**: rewritten for voice — short spoken sentences, no markdown, and a trailing question only when a clarification is genuinely needed (which is what keeps the microphone open through `continue_conversation`). The entity-domain listing is only sent to entries that still use the legacy tools, since `GetLiveContext` provides live state.
+- **Legacy tools deprecated as model tools**: `control_ha_device`, `get_ha_state` and `list_ha_entities` bypass the exposure settings, so they are now opt-in. The `homestral.control_device` service is unchanged.
+- **Config entry version 2**: entries created before this release are migrated automatically and keep the legacy tools enabled alongside the Assist API, so nothing breaks on upgrade.
+
+### Tests
+
+- 169 tests: `tests/test_llm_tools.py` covers the tool bridge (schema conversion, name collisions, routing, failures), `tests/test_real_world_scenarios.py` drives whole turns through scripted conversation streams (two tools in one turn, incremental arguments, server-side web search, unknown tool refused, bounded loop), and `tests/conftest.py` adds the shared chat-log and LLM API fakes.
+
+## [0.4.0] - 2026-10-22
+
+Phase 2 of the Voxtral 3 plan: speak.
+
+### Added
+
+- **Streamed text-to-speech**: the Assist pipeline now streams the conversation answer into the text-to-speech entity. The text is split into sentences, synthesized in batches (the first sentence immediately, then up to three, then everything available) and returned as one streaming WAV: a header with `nframes=0` followed by raw 24 kHz PCM, so playback starts before the model has finished writing.
+- **Expressive delivery**: new options for a default voice, a default emotion (the 34 documented values), a default speaking pace (`very-slow` to `very-fast`) and expressiveness (1.0 to 5.0). `tts.speak` also accepts per-request `emotion` and `pace` options. The tags are applied to the first sentence batch, so the whole answer keeps the style.
+
+### Changed
+
+- **Streaming format**: the streamed path requests `pcm` (time to first audio about 0.8 s, against about 3 s for mp3); the one-shot path keeps `wav` so Home Assistant can cache it.
+- **Dependencies**: `sentence-stream==1.3.0` added to the manifest (the sentence splitter Home Assistant itself uses for streamed speech).
+
+### Tests
+
+- 147 tests: `tests/test_tts.py` covers the streaming path (exactly one WAV header, the batching schedule, first-batch-only tags, truncation when the API fails mid-stream, unknown tag values dropped) and the one-shot path.
+
+## [0.3.0] - 2026-10-22
+
+Phase 1 of the Voxtral 3 plan: listen. Speech-to-text now runs on Voxtral Mini Transcribe Realtime 3.
+
+### Added
+
+- **Realtime speech-to-text** (`voxtral_realtime.py`): each utterance opens a Voxtral 3 realtime websocket session; the pipeline audio (PCM 16 kHz) is forwarded as it arrives, Voxtral's turn detection ends the utterance on `turn.end` before Home Assistant's silence timeout, and the transcript is taken from `transcription.done`. HomeStral owns the socket (the SDK cannot send `language`, `context_bias` or `turn_detection`, which must precede the first chunk) and reuses the SDK models for every message.
+- **Recognition vocabulary from your home** (`context_builder.py`): the friendly names of the entities exposed to Assist, your area and floor names and your custom phrases are sent as multi-word `context_bias`, capped at 150 entries and refreshed every minute.
+- **Speech-to-text options**: mode (realtime or batch), turn-detection preset (off, default, aggressive), streaming delay (240, 480 or 960 ms), language (pipeline or auto), batch model (mini or small), custom vocabulary, entity-name biasing, chat-audio fallback. English and French descriptions.
+- **Event** `homestral_stt_eager_end` fired on Voxtral's `turn.eager_end`.
+
+### Changed
+
+- **Fallback chain**: realtime failure (connection, server error, timeout) falls back to file transcription with the audio captured so far plus the rest of the utterance; the chat-audio path is now opt-in.
+- **Language**: the pipeline language is sent as ISO 639-1 (`fr-FR` becomes `fr`); `auto` lets Voxtral detect it.
+- **Dependencies**: `pydub` removed (raw PCM goes straight to the API, the WAV fallback uses the standard library); the manifest requires `mistralai[realtime]==3.3.0` only.
+
+### Tests
+
+- 129 tests: `tests/test_realtime_session.py` drives the session against a fake websocket server (settings before audio, turn events, early end, errors, timeouts, rejected handshake), `tests/test_stt.py` covers the realtime path, the fallbacks and the options, `tests/test_context_builder.py` the vocabulary builder.
+
 ## [0.2.2] - 2026-10-22
 
 Foundations for Voxtral 3 (see `docs/voxtral3-integration-plan.md`); the realtime STT, streamed TTS and streamed reasoning land in the next releases.
@@ -88,7 +166,7 @@ First public release, installable through HACS.
 - **Voxtral TTS**: Added a text-to-speech platform using Voxtral TTS (`voxtral-mini-tts-2603` via `/v1/audio/speech`).
 - **Tool Calling**: Added FunctionTools for Home Assistant control (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with automatic Home Assistant context injection into conversations.
 
-## [0.0.2] - 2023-11-01
+## [0.0.2] - pre-release
 
 ### Added
 
@@ -110,7 +188,7 @@ First public release, installable through HACS.
 - **Error Messages**: Improved error messages with more context and details.
 - **Log Messages**: Structured log messages for better debugging and analysis.
 
-## [0.0.1] - 2023-10-01
+## [0.0.1] - pre-release
 
 ### Added
 

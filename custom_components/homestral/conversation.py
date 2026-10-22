@@ -40,6 +40,10 @@ class MistralConversationEntity(
 ):
     """Mistral conversation entity."""
 
+    # The answer is pushed into the chat log as it is generated, so the Assist pipeline can
+    # start speaking before the model has finished writing.
+    _attr_supports_streaming = True
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         """Initialize the conversation entity."""
         super().__init__()
@@ -85,16 +89,10 @@ class MistralConversationEntity(
         user_input: ConversationInput,
         chat_log,
     ) -> ConversationResult:
-        """Process the user input through the shared runner."""
+        """Process the user input through the shared runner, streaming the answer."""
         ha_conversation_id = getattr(user_input, "conversation_id", None)
         try:
-            content = await self._runner.async_answer(user_input.text, ha_conversation_id=ha_conversation_id)
-            chat_log.content.append(
-                AssistantContent(
-                    agent_id=self._attr_unique_id,
-                    content=content,
-                )
-            )
+            await self._runner.async_run_streaming(chat_log, user_input)
         except Exception as e:
             error = ConversationError(
                 message=f"Error processing conversation: {e}",

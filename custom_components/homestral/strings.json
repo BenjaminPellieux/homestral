@@ -10,14 +10,22 @@
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
           "model": "Chat model",
-          "max_tool_iterations": "Maximum tool calls per request"
+          "max_tool_iterations": "Maximum tool calls per request",
+          "llm_hass_api": "Home Assistant control",
+          "legacy_tools": "Legacy HomeStral tools",
+          "prompt": "Custom instructions",
+          "confirm_sensitive_actions": "Confirm sensitive actions"
         },
         "data_description": {
           "api_key": "Create a key at console.mistral.ai with access to the Mistral Large and Voxtral models.",
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
           "model": "Mistral chat model used for conversations and voice queries.",
-          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10).",
+          "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
+          "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance).",
+          "confirm_sensitive_actions": "Require a spoken confirmation before unlocking a door, disarming an alarm or opening a cover. The assistant asks first and only acts after you answer."
         }
       }
     },
@@ -38,13 +46,47 @@
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
           "model": "Chat model",
-          "max_tool_iterations": "Maximum tool calls per request"
+          "max_tool_iterations": "Maximum tool calls per request",
+          "stt_mode": "Speech-to-text mode",
+          "stt_turn_detection": "Turn detection",
+          "stt_streaming_delay_ms": "Realtime streaming delay (ms)",
+          "stt_language": "Speech-to-text language",
+          "stt_batch_model": "Batch transcription model",
+          "stt_custom_vocabulary": "Custom vocabulary",
+          "stt_bias_entities": "Recognise exposed entity, area and floor names",
+          "stt_chat_fallback": "Chat-audio fallback",
+          "tts_voice": "Default voice",
+          "tts_default_emotion": "Default emotion",
+          "tts_default_pace": "Default speaking pace",
+          "tts_expressiveness": "Expressiveness",
+          "llm_hass_api": "Home Assistant control",
+          "legacy_tools": "Legacy HomeStral tools",
+          "prompt": "Custom instructions",
+          "confirm_sensitive_actions": "Confirm sensitive actions",
+          "tts_pronunciations": "Custom pronunciations"
         },
         "data_description": {
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
           "model": "Mistral chat model used for conversations and voice queries.",
-          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10).",
+          "stt_mode": "Realtime streams the audio to Voxtral while you speak and ends the turn as soon as you stop; batch uploads the whole recording once Home Assistant detects silence.",
+          "stt_turn_detection": "Realtime only. Default suits most homes; aggressive ends turns sooner for short commands (more cut-offs when you pause); off relies on Home Assistant's silence detection.",
+          "stt_streaming_delay_ms": "Realtime only. Lower is faster but less accurate; 480 ms is Mistral's recommended starting point.",
+          "stt_language": "Send the Assist pipeline language to Voxtral, or let Voxtral detect the language.",
+          "stt_batch_model": "mini is faster and cheaper, small is more accurate. Used in batch mode and as the realtime fallback.",
+          "stt_custom_vocabulary": "Names and phrases to recognise, one per line or separated by commas (a family name, a device nickname).",
+          "stt_bias_entities": "Adds the friendly names of the entities exposed to Assist plus your area and floor names to the recognition vocabulary.",
+          "stt_chat_fallback": "If transcription returns nothing, send the audio to the Voxtral chat model as a last resort (slower).",
+          "tts_voice": "Voxtral voice id used when the Assist pipeline does not select one, for example voice_592 (Marie, French). Leave empty to use the first preset voice of the spoken language.",
+          "tts_default_emotion": "Delivery applied to every answer, for example calm or warm. Tested in English, expected to work in French.",
+          "tts_default_pace": "Speaking rate applied to every answer, from very-slow to very-fast.",
+          "tts_expressiveness": "0 keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability.",
+          "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
+          "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance).",
+          "confirm_sensitive_actions": "Require a spoken confirmation before unlocking a door, disarming an alarm or opening a cover. The assistant asks first and only acts after you answer.",
+          "tts_pronunciations": "Teach the voice how to say a name, one \"word=IPA\" per line, for example Pellieux=p ɛ l j ø."
         }
       }
     }

@@ -194,13 +194,14 @@ async def step_realtime_stt(api_key: str, pcm16k: bytes) -> None:
         )
 
         update = RealtimeTranscriptionSessionUpdateMessage(
+            type="session.update",  # exclude_unset would drop the default literal
             session=RealtimeTranscriptionSessionUpdatePayload(
                 audio_format=AudioFormat(encoding="pcm_s16le", sample_rate=SAMPLE_RATE),
                 target_streaming_delay_ms=480,
                 language="fr",
                 context_bias=CONTEXT_BIAS,
                 turn_detection=TurnDetectionConfig(),
-            )
+            ),
         )
         await ws.send(update.model_dump_json(exclude_unset=True))
 
