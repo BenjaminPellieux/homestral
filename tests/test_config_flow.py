@@ -15,12 +15,17 @@ from custom_components.homestral.const import (
     CONF_STT_MODE,
     CONF_STT_STREAMING_DELAY_MS,
     CONF_STT_TURN_DETECTION,
+    CONF_TTS_DEFAULT_EMOTION,
+    CONF_TTS_DEFAULT_PACE,
+    CONF_TTS_EXPRESSIVENESS,
+    CONF_TTS_VOICE,
     DEFAULT_CHAT_MODEL,
     DEFAULT_STT_BATCH_MODEL,
     DEFAULT_STT_LANGUAGE,
     DEFAULT_STT_MODE,
     DEFAULT_STT_STREAMING_DELAY_MS,
     DEFAULT_STT_TURN_DETECTION,
+    TTS_NONE,
 )
 
 
@@ -85,5 +90,37 @@ def test_options_schema_stt_validation_and_round_trip():
         CONF_STT_CUSTOM_VOCABULARY: "ma prise\nGrand-mère",
         CONF_STT_BIAS_ENTITIES: False,
         CONF_STT_CHAT_FALLBACK: True,
+    }
+    assert {key: _options_schema(stored)({})[key] for key in stored} == stored
+
+
+def test_options_schema_tts_defaults():
+    validated = _options_schema({})({})
+
+    assert validated[CONF_TTS_VOICE] == ""
+    assert validated[CONF_TTS_DEFAULT_EMOTION] == TTS_NONE
+    assert validated[CONF_TTS_DEFAULT_PACE] == TTS_NONE
+    assert validated[CONF_TTS_EXPRESSIVENESS] == 0.0
+
+
+def test_options_schema_tts_validation_and_round_trip():
+    schema = _options_schema({})
+
+    # 0 keeps the service default, 1.0 to 5.0 is the documented range.
+    assert schema({CONF_TTS_EXPRESSIVENESS: 0})[CONF_TTS_EXPRESSIVENESS] == 0.0
+    assert schema({CONF_TTS_EXPRESSIVENESS: "3.5"})[CONF_TTS_EXPRESSIVENESS] == 3.5
+    for invalid in (0.5, 5.5, -1):
+        with pytest.raises(vol.Invalid):
+            schema({CONF_TTS_EXPRESSIVENESS: invalid})
+    with pytest.raises(vol.Invalid):
+        schema({CONF_TTS_DEFAULT_EMOTION: "ecstatic"})
+    with pytest.raises(vol.Invalid):
+        schema({CONF_TTS_DEFAULT_PACE: "turbo"})
+
+    stored = {
+        CONF_TTS_VOICE: "voice_3137",
+        CONF_TTS_DEFAULT_EMOTION: "calm",
+        CONF_TTS_DEFAULT_PACE: "slow",
+        CONF_TTS_EXPRESSIVENESS: 2.5,
     }
     assert {key: _options_schema(stored)({})[key] for key in stored} == stored
