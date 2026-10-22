@@ -1,10 +1,11 @@
 """
 Tests unitaires pour le module conversation.py.
 
-conversation.py n'utilise plus de DeviceController : le controle des appareils
-passe par HAToolExecutor (tools.py) via la boucle de tools Mistral. On teste
-donc les parametres envoyes a ``client.beta.conversations.start_async``
-(model, tools, instructions, agent_id) en patchant ``build_ha_context``.
+L'entite ne garde que la plomberie Home Assistant : la boucle de tools et
+l'etat des conversations Mistral vivent dans agent.MistralTurnRunner
+(voir test_agent.py). Ici on verifie le cablage entite -> runner -> chat log,
+en patchant ``build_ha_context`` dans le module agent et en remplacant les
+classes SDK par des fakes la ou le runner fait ses isinstance().
 """
 
 import json
@@ -14,6 +15,7 @@ import pytest
 import voluptuous as vol
 from homeassistant.const import MATCH_ALL
 
+from custom_components.homestral.agent import HomestralRuntime, MistralTurnRunner
 from custom_components.homestral.const import (
     CONF_AGENT_ID,
     CONF_MAX_TOOL_ITERATIONS,
@@ -29,7 +31,7 @@ from custom_components.homestral.errors import ConversationError
 from custom_components.homestral.tools import ALL_TOOLS
 
 # ---------------------------------------------------------------------------
-# Fake SDK entry classes (patched into homestral.conversation)
+# Fake SDK entry classes (patched into homestral.agent)
 # ---------------------------------------------------------------------------
 
 
@@ -68,23 +70,23 @@ class FakeFunctionResultEntry:
 @pytest.fixture
 def fake_entries(monkeypatch):
     """Patch the SDK entry classes used by the tool loop's isinstance checks."""
-    import custom_components.homestral.conversation as conv_mod
+    import custom_components.homestral.agent as agent_mod
 
-    monkeypatch.setattr(conv_mod, "FunctionCallEntry", FakeFunctionCallEntry)
-    monkeypatch.setattr(conv_mod, "MessageOutputEntry", FakeMessageOutputEntry)
-    monkeypatch.setattr(conv_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
-    monkeypatch.setattr(conv_mod, "FunctionResultEntry", FakeFunctionResultEntry)
+    monkeypatch.setattr(agent_mod, "FunctionCallEntry", FakeFunctionCallEntry)
+    monkeypatch.setattr(agent_mod, "MessageOutputEntry", FakeMessageOutputEntry)
+    monkeypatch.setattr(agent_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
+    monkeypatch.setattr(agent_mod, "FunctionResultEntry", FakeFunctionResultEntry)
 
 
 TOO_MANY_STEPS_MESSAGE = "La réponse a nécessité trop d'étapes. Veuillez reformuler."
 
 
 def _build_entity(entry_data=None):
-    """Construit une entite avec un client Mistral mocke (entry.runtime_data)."""
+    """Construit une entite avec un client Mistral mocke dans entry.runtime_data."""
     mock_hass = MagicMock()
     mock_entry = MagicMock()
     mock_entry.entry_id = "test_entry"
-    mock_entry.runtime_data = MagicMock()  # client Mistral
+    mock_entry.options = {}
     mock_entry.data = (
         entry_data
         if entry_data is not None
@@ -93,13 +95,39 @@ def _build_entity(entry_data=None):
             CONF_USE_AGENT: False,
         }
     )
+    client = MagicMock()
+    mock_entry.runtime_data = HomestralRuntime(client=client, runner=MistralTurnRunner(mock_hass, mock_entry, client))
     return MistralConversationEntity(mock_hass, mock_entry)
 
 
-def _make_user_input(text):
+def _make_user_input(text, conversation_id="ha_conv"):
     user_input = MagicMock()
     user_input.text = text
+    user_input.conversation_id = conversation_id
     return user_input
+
+
+def _make_chat_log():
+    chat_log = MagicMock()
+    chat_log.content = []
+    return chat_log
+
+
+def _patch_deps():
+    return (
+        patch("custom_components.homestral.agent.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
+        patch(
+            "custom_components.homestral.conversation.conversation.async_get_result_from_chat_log",
+            return_value=MagicMock(),
+        ),
+    )
+
+
+def _text_response(conversation_id, text):
+    response = MagicMock()
+    response.conversation_id = conversation_id
+    response.outputs = [FakeMessageOutputEntry(text)]
+    return response
 
 
 @pytest.mark.asyncio
@@ -107,8 +135,7 @@ async def test_async_handle_error():
     """Test la gestion des erreurs."""
     entity = _build_entity()
 
-    chat_log = MagicMock()
-    chat_log.content = []
+    chat_log = _make_chat_log()
 
     error = ConversationError(message="Test error", code="TEST_ERROR", details={"key": "value"})
 
@@ -127,54 +154,48 @@ def test_supported_languages():
 
 
 @pytest.mark.asyncio
-async def test_start_conversation_passes_model_tools_and_instructions():
-    """start_conversation envoie model par defaut, ALL_TOOLS et les instructions."""
+async def test_first_turn_passes_model_tools_and_instructions(fake_entries):
+    """Premier tour : start_async recoit model par defaut, ALL_TOOLS et les instructions."""
     entity = _build_entity()  # pas de cle "model" -> DEFAULT_CHAT_MODEL
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=_text_response("conv_1", "Fait."))
 
-    response = MagicMock()
-    entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
+    ctx_patch, result_patch = _patch_deps()
+    with ctx_patch, result_patch:
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(_make_user_input("Allume la lumière du salon"), chat_log)
 
-    with patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        result = await entity.start_conversation(_make_user_input("Allume la lumière du salon"))
-
-    assert result is response
-    entity._client.beta.conversations.start_async.assert_called_once()
     kwargs = entity._client.beta.conversations.start_async.call_args.kwargs
     assert kwargs["inputs"] == "Allume la lumière du salon"
     assert kwargs["instructions"] == "ctx"
     assert kwargs["tools"] is ALL_TOOLS
     assert kwargs["model"] == DEFAULT_CHAT_MODEL
     assert "agent_id" not in kwargs
+    assert chat_log.content[0].content == "Fait."
+    assert chat_log.content[0].agent_id == "test_entry"
 
 
 @pytest.mark.asyncio
-async def test_start_conversation_uses_configured_model():
+async def test_first_turn_uses_configured_model(fake_entries):
     """Un modele configure dans l'entry est prioritaire sur le defaut."""
-    entity = _build_entity({CONF_MODEL: "mistral-small-latest", CONF_USE_AGENT: False})
+    entity = _build_entity({CONF_MODEL: "mistral-large-latest", CONF_USE_AGENT: False})
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=_text_response("conv_1", "ok"))
 
-    entity._client.beta.conversations.start_async = AsyncMock(return_value=MagicMock())
+    ctx_patch, result_patch = _patch_deps()
+    with ctx_patch, result_patch:
+        await entity._async_handle_message(_make_user_input("Bonjour"), _make_chat_log())
 
-    with patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        await entity.start_conversation(_make_user_input("Bonjour"))
-
-    kwargs = entity._client.beta.conversations.start_async.call_args.kwargs
-    assert kwargs["model"] == "mistral-small-latest"
+    assert entity._client.beta.conversations.start_async.call_args.kwargs["model"] == "mistral-large-latest"
 
 
 @pytest.mark.asyncio
-async def test_start_conversation_with_agent_passes_agent_id():
+async def test_first_turn_with_agent_passes_agent_id(fake_entries):
     """Avec use_agent=True, agent_id est envoye et aucun model n'est passe."""
-    entity = _build_entity(
-        {
-            CONF_USE_AGENT: True,
-            CONF_AGENT_ID: "agent_123",
-        }
-    )
+    entity = _build_entity({CONF_USE_AGENT: True, CONF_AGENT_ID: "agent_123"})
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=_text_response("conv_1", "ok"))
 
-    entity._client.beta.conversations.start_async = AsyncMock(return_value=MagicMock())
-
-    with patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        await entity.start_conversation(_make_user_input("Bonjour"))
+    ctx_patch, result_patch = _patch_deps()
+    with ctx_patch, result_patch:
+        await entity._async_handle_message(_make_user_input("Bonjour"), _make_chat_log())
 
     kwargs = entity._client.beta.conversations.start_async.call_args.kwargs
     assert kwargs["agent_id"] == "agent_123"
@@ -184,23 +205,24 @@ async def test_start_conversation_with_agent_passes_agent_id():
 
 
 @pytest.mark.asyncio
-async def test_keep_conversation_appends_to_existing_conversation():
-    """keep_conversation reutilise le conversation_id via append_async."""
+async def test_second_turn_appends_to_existing_conversation(fake_entries):
+    """Le second tour d'une meme conversation HA reutilise le conversation_id via append_async."""
     entity = _build_entity()
-    entity._conversation_id = "conv_abc"
+    entity._client.beta.conversations.start_async = AsyncMock(return_value=_text_response("conv_abc", "a"))
+    entity._client.beta.conversations.append_async = AsyncMock(return_value=_text_response("conv_abc", "b"))
 
-    response = MagicMock()
-    entity._client.beta.conversations.append_async = AsyncMock(return_value=response)
+    ctx_patch, result_patch = _patch_deps()
+    with ctx_patch, result_patch:
+        await entity._async_handle_message(_make_user_input("Bonjour"), _make_chat_log())
+        chat_log = _make_chat_log()
+        await entity._async_handle_message(_make_user_input("Et la météo ?"), chat_log)
 
-    with patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"):
-        result = await entity.keep_conversation(_make_user_input("Et la météo ?"))
-
-    assert result is response
-    entity._client.beta.conversations.append_async.assert_called_once()
+    entity._client.beta.conversations.start_async.assert_called_once()
     kwargs = entity._client.beta.conversations.append_async.call_args.kwargs
     assert kwargs["conversation_id"] == "conv_abc"
     assert kwargs["inputs"] == "Et la météo ?"
     assert kwargs["completion_args"] == {"instructions": "ctx"}
+    assert chat_log.content[0].content == "b"
 
 
 async def _run_endless_tool_loop(entity):
@@ -218,16 +240,13 @@ async def _run_endless_tool_loop(entity):
     entity._client.beta.conversations.start_async = AsyncMock(return_value=loop_response)
     entity._client.beta.conversations.append_async = AsyncMock(return_value=loop_response)
 
-    chat_log = MagicMock()
-    chat_log.content = []
+    chat_log = _make_chat_log()
 
+    ctx_patch, result_patch = _patch_deps()
     with (
-        patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
-        patch(
-            "custom_components.homestral.conversation.conversation.async_get_result_from_chat_log",
-            return_value=MagicMock(),
-        ),
-        patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec,
+        ctx_patch,
+        result_patch,
+        patch.object(entity._runner._tool_executor, "execute", new_callable=AsyncMock) as mock_exec,
     ):
         mock_exec.return_value = json.dumps(
             {

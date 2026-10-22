@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
+from .agent import HomestralRuntime, MistralTurnRunner
 from .api_control import async_setup_api_control
 from .const import CONF_API_KEY, DOMAIN, PLATFORMS
 from .helpers import create_mistral_client, install_custom_sentences
@@ -25,7 +26,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HomeStral from a config entry."""
     # The client constructor does blocking importlib.metadata scans — build it in an executor.
-    entry.runtime_data = await hass.async_add_executor_job(create_mistral_client, entry.data[CONF_API_KEY])
+    client = await hass.async_add_executor_job(create_mistral_client, entry.data[CONF_API_KEY])
+    # One client and one turn runner shared by the conversation, intent, STT and TTS entities.
+    entry.runtime_data = HomestralRuntime(client=client, runner=MistralTurnRunner(hass, entry, client))
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     installed = await hass.async_add_executor_job(install_custom_sentences, hass.config.path("custom_sentences"))

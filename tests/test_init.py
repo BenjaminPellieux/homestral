@@ -59,7 +59,12 @@ async def test_async_setup_entry_builds_client_in_executor(tmp_path):
     # The client was built via the executor, not inline in the event loop
     client_calls = [args for func, args in executor_calls if func is create_mistral_client]
     assert client_calls == [("sk-test-key-456",)]
-    assert entry.runtime_data is not None
+    # One client and one shared turn runner are kept on the entry
+    from custom_components.homestral.agent import HomestralRuntime, MistralTurnRunner
+
+    assert isinstance(entry.runtime_data, HomestralRuntime)
+    assert isinstance(entry.runtime_data.runner, MistralTurnRunner)
+    assert entry.runtime_data.runner._client is entry.runtime_data.client
     assert forwarded == [(entry, ["sensor", "conversation", "stt", "tts"])]
 
 

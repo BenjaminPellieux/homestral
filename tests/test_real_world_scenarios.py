@@ -1,14 +1,13 @@
 """
-Integration tests for the Mistral tool loop in MistralConversationEntity.
+Integration tests for the Mistral tool loop driven through MistralConversationEntity.
 
 These tests verify that FunctionCallEntry (control_ha_device, get_ha_state, etc.)
 flows through _async_handle_message correctly — device control is no longer done
-via a keyword parser but via the LLM tool call mechanism.
+via a keyword parser but via the LLM tool call mechanism, which now lives in
+agent.MistralTurnRunner.
 
-The mistralai SDK layout differs between versions (mistralai.models vs
-mistralai.client.models), so tests never import model classes from the SDK:
-plain fake classes are patched into the homestral.conversation namespace, which
-is what the tool loop's isinstance() checks resolve against.
+Plain fake classes are patched into the homestral.agent namespace, which is what
+the tool loop's isinstance() checks resolve against.
 """
 
 import json
@@ -16,8 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.homestral.agent import HomestralRuntime, MistralTurnRunner
+
 # ---------------------------------------------------------------------------
-# Fake SDK entry classes (patched into homestral.conversation)
+# Fake SDK entry classes (patched into homestral.agent)
 # ---------------------------------------------------------------------------
 
 
@@ -56,12 +57,15 @@ class FakeFunctionResultEntry:
 @pytest.fixture
 def fake_entries(monkeypatch):
     """Patch the SDK entry classes used by the tool loop's isinstance checks."""
-    import custom_components.homestral.conversation as conv_mod
+    import custom_components.homestral.agent as agent_mod
 
-    monkeypatch.setattr(conv_mod, "FunctionCallEntry", FakeFunctionCallEntry)
-    monkeypatch.setattr(conv_mod, "MessageOutputEntry", FakeMessageOutputEntry)
-    monkeypatch.setattr(conv_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
-    monkeypatch.setattr(conv_mod, "FunctionResultEntry", FakeFunctionResultEntry)
+    monkeypatch.setattr(agent_mod, "FunctionCallEntry", FakeFunctionCallEntry)
+    monkeypatch.setattr(agent_mod, "MessageOutputEntry", FakeMessageOutputEntry)
+    monkeypatch.setattr(agent_mod, "ToolExecutionEntry", FakeToolExecutionEntry)
+    monkeypatch.setattr(agent_mod, "FunctionResultEntry", FakeFunctionResultEntry)
+
+
+HA_CONVERSATION_ID = "ha_conv_001"
 
 
 def _build_entity(entry_data=None):
@@ -71,7 +75,7 @@ def _build_entity(entry_data=None):
     mock_hass = MagicMock()
     mock_entry = MagicMock()
     mock_entry.entry_id = "test_entry"
-    mock_entry.runtime_data = MagicMock()  # client Mistral
+    mock_entry.options = {}
     mock_entry.data = (
         entry_data
         if entry_data is not None
@@ -80,6 +84,8 @@ def _build_entity(entry_data=None):
             "use_agent": False,
         }
     )
+    client = MagicMock()
+    mock_entry.runtime_data = HomestralRuntime(client=client, runner=MistralTurnRunner(mock_hass, mock_entry, client))
     return MistralConversationEntity(mock_hass, mock_entry)
 
 
@@ -89,21 +95,26 @@ def _make_chat_log():
     return chat_log
 
 
-def _make_user_input(text):
+def _make_user_input(text, conversation_id=HA_CONVERSATION_ID):
     user_input = MagicMock()
     user_input.text = text
+    user_input.conversation_id = conversation_id
     return user_input
 
 
 def _patch_conversation_deps():
     """Patch build_ha_context and the chat-log result helper."""
     return (
-        patch("custom_components.homestral.conversation.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
+        patch("custom_components.homestral.agent.build_ha_context", new_callable=AsyncMock, return_value="ctx"),
         patch(
             "custom_components.homestral.conversation.conversation.async_get_result_from_chat_log",
             return_value=MagicMock(),
         ),
     )
+
+
+def _patch_executor(entity):
+    return patch.object(entity._runner._tool_executor, "execute", new_callable=AsyncMock)
 
 
 @pytest.mark.asyncio
@@ -135,7 +146,7 @@ async def test_tool_loop_control_ha_device(fake_entries):
     entity._client.beta.conversations.append_async = AsyncMock(return_value=second_response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+    with ctx_patch, result_patch, _patch_executor(entity) as mock_exec:
         mock_exec.return_value = json.dumps(
             {
                 "success": True,
@@ -164,7 +175,7 @@ async def test_tool_loop_control_ha_device(fake_entries):
     assert json.loads(result_entries[0].result)["success"] is True
 
     # The conversation continues and the final answer reaches the chat log
-    assert entity._conversation_id == "conv_001"
+    assert entity._runner.mistral_conversation_id(HA_CONVERSATION_ID) == "conv_001"
     assert len(chat_log.content) == 1
     assert "allumé" in chat_log.content[0].content.lower()
 
@@ -215,9 +226,9 @@ async def test_tool_loop_empty_outputs_returns_default_message(fake_entries):
 
 @pytest.mark.asyncio
 async def test_tool_loop_api_exception_resets_conversation(fake_entries):
-    """An API exception appends an error message and resets the conversation ID."""
+    """An API exception appends an error message and drops the Mistral conversation."""
     entity = _build_entity()
-    entity._conversation_id = "existing_conv"
+    entity._runner._remember(HA_CONVERSATION_ID, "existing_conv")
 
     entity._client.beta.conversations.append_async = AsyncMock(side_effect=RuntimeError("API down"))
 
@@ -226,7 +237,7 @@ async def test_tool_loop_api_exception_resets_conversation(fake_entries):
         chat_log = _make_chat_log()
         await entity._async_handle_message(_make_user_input("Quelle heure est-il ?"), chat_log)
 
-    assert entity._conversation_id is None
+    assert entity._runner.mistral_conversation_id(HA_CONVERSATION_ID) is None
     assert len(chat_log.content) == 1
     assert "Error" in chat_log.content[0].content
 
@@ -250,7 +261,7 @@ async def test_tool_loop_builtin_tool_execution(fake_entries):
     entity._client.beta.conversations.start_async = AsyncMock(return_value=response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+    with ctx_patch, result_patch, _patch_executor(entity) as mock_exec:
         chat_log = _make_chat_log()
         await entity._async_handle_message(_make_user_input("Quel temps fait-il ?"), chat_log)
 
@@ -290,7 +301,7 @@ async def test_tool_loop_stops_at_configured_max_iterations(fake_entries):
     entity._client.beta.conversations.append_async = AsyncMock(return_value=loop_response)
 
     ctx_patch, result_patch = _patch_conversation_deps()
-    with ctx_patch, result_patch, patch.object(entity._tool_executor, "execute", new_callable=AsyncMock) as mock_exec:
+    with ctx_patch, result_patch, _patch_executor(entity) as mock_exec:
         mock_exec.return_value = json.dumps(
             {
                 "success": True,
@@ -312,6 +323,31 @@ async def test_tool_loop_stops_at_configured_max_iterations(fake_entries):
     # The user gets the too-many-steps fallback message
     assert len(chat_log.content) == 1
     assert chat_log.content[0].content == "La réponse a nécessité trop d'étapes. Veuillez reformuler."
+
+
+@pytest.mark.asyncio
+async def test_two_satellites_do_not_share_a_mistral_conversation(fake_entries):
+    """Two HA conversations (two users or satellites) each get their own Mistral thread."""
+    entity = _build_entity()
+
+    first = MagicMock()
+    first.conversation_id = "conv_salon"
+    first.outputs = [FakeMessageOutputEntry("Salon ok.")]
+    second = MagicMock()
+    second.conversation_id = "conv_cuisine"
+    second.outputs = [FakeMessageOutputEntry("Cuisine ok.")]
+    entity._client.beta.conversations.start_async = AsyncMock(side_effect=[first, second])
+    entity._client.beta.conversations.append_async = AsyncMock()
+
+    ctx_patch, result_patch = _patch_conversation_deps()
+    with ctx_patch, result_patch:
+        await entity._async_handle_message(_make_user_input("Allume le salon", "sat_salon"), _make_chat_log())
+        await entity._async_handle_message(_make_user_input("Allume la cuisine", "sat_cuisine"), _make_chat_log())
+
+    assert entity._client.beta.conversations.start_async.call_count == 2
+    entity._client.beta.conversations.append_async.assert_not_called()
+    assert entity._runner.mistral_conversation_id("sat_salon") == "conv_salon"
+    assert entity._runner.mistral_conversation_id("sat_cuisine") == "conv_cuisine"
 
 
 if __name__ == "__main__":

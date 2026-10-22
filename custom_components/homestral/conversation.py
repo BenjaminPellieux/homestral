@@ -1,3 +1,7 @@
+"""Mistral conversation entity: Home Assistant plumbing around the shared turn runner."""
+
+from __future__ import annotations
+
 import homeassistant.components.conversation as conversation
 from homeassistant.components.conversation import (
     AbstractConversationAgent,
@@ -11,54 +15,14 @@ from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-try:
-    from mistralai.models import ConversationResponse, FunctionCallEntry, FunctionResultEntry
-    from mistralai.models.messageoutputentry import MessageOutputEntry
-    from mistralai.models.toolexecutionentry import ToolExecutionEntry
-except ImportError:
-    # HA musllinux wheel uses mistralai.client.models (namespace package)
-    from mistralai.client.models import (
-        ConversationResponse,
-        FunctionCallEntry,
-        FunctionResultEntry,
-        MessageOutputEntry,
-        ToolExecutionEntry,
-    )
-import json
-
-from .const import (
-    CONF_AGENT_ID,
-    CONF_MAX_TOOL_ITERATIONS,
-    CONF_MODEL,
-    CONF_USE_AGENT,
-    DEFAULT_CHAT_MODEL,
-    DEFAULT_MAX_TOOL_ITERATIONS,
-)
+from .agent import HomestralRuntime, extract_text
 from .errors import ConversationError
-from .helpers import get_option
 from .logging_config import get_logger
-from .tools import ALL_TOOLS, HAToolExecutor, build_ha_context
 
 _LOGGER = get_logger(__name__)
 
-
-def _extract_text(content) -> str:
-    """Extract plain text from a Mistral content field.
-
-    Handles str, list[TextChunk], and mixed lists that may contain ToolReference
-    objects (web_search citations). Only TextChunk items (type='text') are kept.
-    """
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for chunk in content:
-            chunk_type = getattr(chunk, "type", None)
-            if chunk_type == "text" or (chunk_type is None and hasattr(chunk, "text")):
-                parts.append(chunk.text)
-            # ToolReference (type='tool_reference') and other non-text chunks are skipped
-        return "".join(parts)
-    return str(content)
+# Kept for callers that imported the helper from this module.
+_extract_text = extract_text
 
 
 async def async_setup_entry(
@@ -81,11 +45,11 @@ class MistralConversationEntity(
         super().__init__()
         self.hass = hass
         self._entry = entry
-        self._client = entry.runtime_data
+        runtime: HomestralRuntime = entry.runtime_data
+        self._runner = runtime.runner
+        self._client = runtime.client
         self._attr_name = "Mistral Conversation"
         self._attr_unique_id = entry.entry_id
-        self._conversation_id = None
-        self._tool_executor = HAToolExecutor(hass)
 
     @property
     def supported_languages(self):
@@ -116,126 +80,28 @@ class MistralConversationEntity(
             )
         )
 
-    async def start_conversation(self, user_input: ConversationInput) -> ConversationResponse:
-        instructions = await build_ha_context(self.hass)
-        kwargs = dict(
-            inputs=user_input.text,
-            instructions=instructions,
-            tools=ALL_TOOLS,
-        )
-        if get_option(self._entry, CONF_USE_AGENT, False):
-            _LOGGER.info("Starting new conversation with agent")
-            kwargs["agent_id"] = get_option(self._entry, CONF_AGENT_ID)
-        else:
-            _LOGGER.info("Starting new conversation with model")
-            kwargs["model"] = get_option(self._entry, CONF_MODEL, DEFAULT_CHAT_MODEL)
-        return await self._client.beta.conversations.start_async(**kwargs)
-
-    async def keep_conversation(self, user_input: ConversationInput) -> ConversationResponse:
-        _LOGGER.info("Continuing conversation")
-        instructions = await build_ha_context(self.hass)
-        return await self._client.beta.conversations.append_async(
-            conversation_id=self._conversation_id,
-            inputs=user_input.text,
-            completion_args={"instructions": instructions},
-        )
-
     async def _async_handle_message(
         self,
         user_input: ConversationInput,
         chat_log,
     ) -> ConversationResult:
-        """Process the user input and call the API."""
-        _LOGGER.info(f"[CONV] new message, conversation_id={self._conversation_id!r}")
+        """Process the user input through the shared runner."""
+        ha_conversation_id = getattr(user_input, "conversation_id", None)
         try:
-            if self._conversation_id is None:
-                response = await self.start_conversation(user_input)
-            else:
-                response = await self.keep_conversation(user_input)
-
-            # Tool execution loop (bounded by the configured max iterations)
-            self._conversation_id = getattr(response, "conversation_id", None)
-            content = None
-            max_iterations = int(get_option(self._entry, CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS))
-            for iteration in range(max_iterations):
-                if not response.outputs:
-                    content = "Désolé, je n'ai pas reçu de réponse."
-                    break
-
-                first = response.outputs[0]
-                _LOGGER.info(f"[TOOL LOOP iter={iteration}] output type: {type(first).__name__}")
-
-                if isinstance(first, ToolExecutionEntry):
-                    # Built-in Mistral server-side tool (web_search, code_interpreter, etc.)
-                    tool_name = str(first.name)
-                    _LOGGER.info(f"[TOOL built-in] {tool_name}, args: {first.arguments}")
-                    for out in response.outputs[1:]:
-                        if isinstance(out, MessageOutputEntry):
-                            content = _extract_text(out.content)
-                            break
-                    if content is None:
-                        content = "La recherche n'a pas retourné de résultat."
-                    break
-
-                elif isinstance(first, FunctionCallEntry):
-                    # Collect ALL function calls — Mistral may batch several in one response.
-                    # Sending only the first result causes HTTP 400 "missing function results".
-                    all_calls = [o for o in response.outputs if isinstance(o, FunctionCallEntry)]
-                    result_entries = []
-                    for call in all_calls:
-                        args_str = call.arguments if isinstance(call.arguments, str) else json.dumps(call.arguments)
-                        _LOGGER.info(f"[TOOL custom] {call.name}, args: {args_str}")
-                        try:
-                            tool_result = await self._tool_executor.execute(
-                                call.name,
-                                json.loads(args_str or "{}"),
-                            )
-                        except Exception as exc:
-                            _LOGGER.error(f"[TOOL error] {call.name}: {exc}")
-                            tool_result = json.dumps({"error": str(exc)})
-                        _LOGGER.info(f"[TOOL result] {call.name}: {tool_result[:200]}")
-                        result_entries.append(
-                            FunctionResultEntry(
-                                tool_call_id=call.tool_call_id,
-                                result=tool_result,
-                            )
-                        )
-                    response = await self._client.beta.conversations.append_async(
-                        conversation_id=self._conversation_id,
-                        inputs=result_entries,
-                    )
-                    self._conversation_id = getattr(response, "conversation_id", self._conversation_id)
-
-                elif isinstance(first, MessageOutputEntry):
-                    content = _extract_text(first.content)
-                    break
-                else:
-                    _LOGGER.warning(f"[TOOL LOOP] unknown output type: {type(first)}")
-                    content = "Réponse inattendue du modèle."
-                    break
-            else:
-                content = "La réponse a nécessité trop d'étapes. Veuillez reformuler."
-
-            if content is None:
-                content = "Aucune réponse disponible."
-
-            content = content if content is not None else "Aucune réponse."
-            _LOGGER.info(f"[CONV] final content: {content[:200]}")
+            content = await self._runner.async_answer(user_input.text, ha_conversation_id=ha_conversation_id)
             chat_log.content.append(
                 AssistantContent(
                     agent_id=self._attr_unique_id,
                     content=content,
                 )
             )
-
         except Exception as e:
             error = ConversationError(
                 message=f"Error processing conversation: {e}",
                 code="CONVERSATION_PROCESSING_ERROR",
-                details={"error": str(e), "conversation_id": self._conversation_id},
+                details={"error": str(e), "conversation_id": ha_conversation_id},
             )
             _LOGGER.error(f"Error processing conversation: {error}")
             await self.async_handle_error(chat_log, error)
-            self._conversation_id = None
 
         return conversation.async_get_result_from_chat_log(user_input, chat_log)

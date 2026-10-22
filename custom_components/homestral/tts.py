@@ -58,7 +58,7 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
         self.hass = hass
         self._attr_name = "Voxtral TTS"
         self._attr_unique_id = f"{config_entry.entry_id}-tts"
-        self._client = config_entry.runtime_data
+        self._client = config_entry.runtime_data.client
 
     @callback
     def async_get_supported_voices(self, language: str) -> list[tts.Voice] | None:

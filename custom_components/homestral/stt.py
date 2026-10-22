@@ -37,7 +37,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         self.hass = hass
         self._attr_name = "Voxtral STT"
         self._attr_unique_id = f"{config_entry.entry_id}-stt"
-        self._client = config_entry.runtime_data
+        self._client = config_entry.runtime_data.client
 
     @property
     def supported_languages(self) -> list[str]:
