@@ -16,6 +16,7 @@ from .const import (
     AVAILABLE_CHAT_MODELS,
     CONF_AGENT_ID,
     CONF_API_KEY,
+    CONF_CONFIRM_SENSITIVE,
     CONF_LEGACY_TOOLS,
     CONF_LLM_HASS_API,
     CONF_MAX_TOOL_ITERATIONS,
@@ -32,9 +33,11 @@ from .const import (
     CONF_TTS_DEFAULT_EMOTION,
     CONF_TTS_DEFAULT_PACE,
     CONF_TTS_EXPRESSIVENESS,
+    CONF_TTS_PRONUNCIATIONS,
     CONF_TTS_VOICE,
     CONF_USE_AGENT,
     DEFAULT_CHAT_MODEL,
+    DEFAULT_CONFIRM_SENSITIVE,
     DEFAULT_LEGACY_TOOLS,
     DEFAULT_LLM_HASS_API,
     DEFAULT_MAX_TOOL_ITERATIONS,
@@ -51,6 +54,7 @@ from .const import (
     DEFAULT_TTS_EMOTION,
     DEFAULT_TTS_EXPRESSIVENESS,
     DEFAULT_TTS_PACE,
+    DEFAULT_TTS_PRONUNCIATIONS,
     DEFAULT_TTS_VOICE,
     DOMAIN,
     MAX_TOOL_ITERATIONS,
@@ -97,6 +101,9 @@ def _chat_options_schema(defaults: Mapping[str, Any], api_ids: list[str] | None 
         ): cv.multi_select({api: api for api in sorted(api_ids or DEFAULT_LLM_HASS_API)}),
         vol.Optional(CONF_LEGACY_TOOLS, default=defaults.get(CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS)): bool,
         vol.Optional(CONF_PROMPT, default=defaults.get(CONF_PROMPT, DEFAULT_PROMPT)): str,
+        vol.Optional(
+            CONF_CONFIRM_SENSITIVE, default=defaults.get(CONF_CONFIRM_SENSITIVE, DEFAULT_CONFIRM_SENSITIVE)
+        ): bool,
     }
 
 
@@ -139,6 +146,9 @@ def _tts_options_schema(defaults: Mapping[str, Any]) -> dict:
             [TTS_NONE, *TTS_PACES]
         ),
         # 0 keeps the service default; otherwise the documented 1.0 to 5.0 range.
+        vol.Optional(
+            CONF_TTS_PRONUNCIATIONS, default=defaults.get(CONF_TTS_PRONUNCIATIONS, DEFAULT_TTS_PRONUNCIATIONS)
+        ): str,
         vol.Optional(
             CONF_TTS_EXPRESSIVENESS, default=defaults.get(CONF_TTS_EXPRESSIVENESS, DEFAULT_TTS_EXPRESSIVENESS)
         ): vol.All(

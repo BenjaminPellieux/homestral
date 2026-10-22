@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-22
+
+Phase 4 of the Voxtral 3 plan: polish.
+
+### Added
+
+- **Spoken confirmation for sensitive actions** (optional, off by default): when on, unlocking a door, disarming an alarm or opening a cover is refused until the assistant has asked and you have answered. The refusal is handed back to the model, which then asks, so it is a guard rather than a suggestion in the prompt.
+- **Custom pronunciations**: teach the voice how to say a name with one `word=IPA` entry per line, sent to Voxtral as `phoneme_hints`.
+- **Diagnostics**: downloading diagnostics for the entry returns its data, options, version and runtime cache keys, with the API key redacted.
+
+### Changed
+
+- **Minimum Home Assistant version is now 2026.2.3** in `hacs.json`, `README.md` and `DEVELOPMENT.md`. The previous 2025.11.0 floor was never tested and is older than the streamed-speech and LLM API plumbing the integration relies on. The test workflow now runs twice, once against that exact floor and once against the latest release, so the promise is checked.
+- **Changelog**: the 0.0.1 and 0.0.2 entries carried invented 2023 dates, two years before the first commit; they are marked as pre-release instead.
+
+### Tests
+
+- 185 tests: `tests/test_safety.py` covers the confirmation guard (which tools and domains count as sensitive, how a question is detected, the refusal payload) and `tests/test_diagnostics.py` asserts the API key never reaches a report.
+
 ## [0.5.0] - 2026-10-22
 
 Phase 3 of the Voxtral 3 plan: reason and act.
@@ -147,7 +166,7 @@ First public release, installable through HACS.
 - **Voxtral TTS**: Added a text-to-speech platform using Voxtral TTS (`voxtral-mini-tts-2603` via `/v1/audio/speech`).
 - **Tool Calling**: Added FunctionTools for Home Assistant control (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with automatic Home Assistant context injection into conversations.
 
-## [0.0.2] - 2023-11-01
+## [0.0.2] - pre-release
 
 ### Added
 
@@ -169,7 +188,7 @@ First public release, installable through HACS.
 - **Error Messages**: Improved error messages with more context and details.
 - **Log Messages**: Structured log messages for better debugging and analysis.
 
-## [0.0.1] - 2023-10-01
+## [0.0.1] - pre-release
 
 ### Added
 

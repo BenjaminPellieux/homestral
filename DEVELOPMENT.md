@@ -122,8 +122,8 @@ All network calls use the `*_async` methods of the SDK and are awaited in the ev
 ## Development Setup
 
 ### Prerequisites
-- Python 3.13 or higher (required by Home Assistant 2025.11+)
-- Home Assistant 2025.11 or higher (running in Docker or native)
+- Python 3.13 or higher (required by Home Assistant 2026.2+)
+- Home Assistant 2026.2.3 or higher (running in Docker or native)
 - Mistral AI API key with access to the `mistral-large` and `voxtral` models
 
 ### Installation

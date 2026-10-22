@@ -76,7 +76,7 @@ def test_tts_voices_table():
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.5.0"
+    assert manifest["version"] == "0.6.0"
     # The realtime extra brings websockets, sentence-stream splits the streamed answer into
     # sentences; pydub is gone (raw PCM goes straight to the API).
     assert manifest["requirements"] == ["mistralai[realtime]==3.3.0", "sentence-stream>=1.3.0"]

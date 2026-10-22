@@ -34,6 +34,7 @@ from .const import (
     CONF_TTS_DEFAULT_EMOTION,
     CONF_TTS_DEFAULT_PACE,
     CONF_TTS_EXPRESSIVENESS,
+    CONF_TTS_PRONUNCIATIONS,
     CONF_TTS_VOICE,
     DEFAULT_TTS_EMOTION,
     DEFAULT_TTS_EXPRESSIVENESS,
@@ -41,6 +42,7 @@ from .const import (
     DEFAULT_TTS_LANGUAGE,
     DEFAULT_TTS_MODEL,
     DEFAULT_TTS_PACE,
+    DEFAULT_TTS_PRONUNCIATIONS,
     DEFAULT_TTS_VOICE,
     MAX_TTS_EXPRESSIVENESS,
     MIN_TTS_EXPRESSIVENESS,
@@ -91,6 +93,25 @@ def delivery_tags(emotion: str | None, pace: str | None) -> str:
         else:
             _LOGGER.warning(f"[TTS] unknown pace {pace!r}, ignored")
     return prefix
+
+
+def parse_pronunciations(text: str | None) -> dict[str, list[str]]:
+    """Parse the ``word=ipa`` option into the ``phoneme_hints`` mapping.
+
+    One entry per line; the value is a space-separated IPA transcription, so
+    ``Pellieux=p ɛ l j ø`` teaches the model a family name it keeps mangling.
+    """
+    hints: dict[str, list[str]] = {}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or "=" not in line:
+            continue
+        word, _, ipa = line.partition("=")
+        word = word.strip()
+        phonemes = ipa.split()
+        if word and phonemes:
+            hints[word] = phonemes
+    return hints
 
 
 def streaming_wav_header() -> bytes:
@@ -162,6 +183,8 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
         expressiveness = float(get_option(self._entry, CONF_TTS_EXPRESSIVENESS, DEFAULT_TTS_EXPRESSIVENESS) or 0)
         if MIN_TTS_EXPRESSIVENESS <= expressiveness <= MAX_TTS_EXPRESSIVENESS:
             kwargs["expressiveness"] = expressiveness
+        if hints := parse_pronunciations(get_option(self._entry, CONF_TTS_PRONUNCIATIONS, DEFAULT_TTS_PRONUNCIATIONS)):
+            kwargs["phoneme_hints"] = hints
         return kwargs
 
     # ------------------------------------------------------------------

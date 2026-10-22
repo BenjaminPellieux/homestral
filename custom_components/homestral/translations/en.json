@@ -13,7 +13,8 @@
           "max_tool_iterations": "Maximum tool calls per request",
           "llm_hass_api": "Home Assistant control",
           "legacy_tools": "Legacy HomeStral tools",
-          "prompt": "Custom instructions"
+          "prompt": "Custom instructions",
+          "confirm_sensitive_actions": "Confirm sensitive actions"
         },
         "data_description": {
           "api_key": "Create a key at console.mistral.ai with access to the Mistral Large and Voxtral models.",
@@ -23,7 +24,8 @@
           "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10).",
           "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
           "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
-          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance)."
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance).",
+          "confirm_sensitive_actions": "Require a spoken confirmation before unlocking a door, disarming an alarm or opening a cover. The assistant asks first and only acts after you answer."
         }
       }
     },
@@ -59,7 +61,9 @@
           "tts_expressiveness": "Expressiveness",
           "llm_hass_api": "Home Assistant control",
           "legacy_tools": "Legacy HomeStral tools",
-          "prompt": "Custom instructions"
+          "prompt": "Custom instructions",
+          "confirm_sensitive_actions": "Confirm sensitive actions",
+          "tts_pronunciations": "Custom pronunciations"
         },
         "data_description": {
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
@@ -80,7 +84,9 @@
           "tts_expressiveness": "0 keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability.",
           "llm_hass_api": "Which Home Assistant API the model may act through. Assist exposes your entities as voice intents and honours the per-entity \"exposed to Assist\" setting and the area of the speaking satellite.",
           "legacy_tools": "Also send HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They can reach entities that are not exposed to Assist, so they stay off unless you upgraded from an earlier release.",
-          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance)."
+          "prompt": "Replaces HomeStral's built-in instructions. Leave empty to keep them (short spoken answers, current time, local weather, tool guidance).",
+          "confirm_sensitive_actions": "Require a spoken confirmation before unlocking a door, disarming an alarm or opening a cover. The assistant asks first and only acts after you answer.",
+          "tts_pronunciations": "Teach the voice how to say a name, one \"word=IPA\" per line, for example Pellieux=p ɛ l j ø."
         }
       }
     }

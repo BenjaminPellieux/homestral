@@ -22,6 +22,12 @@ DEFAULT_LEGACY_TOOLS = False
 # Extra system prompt replacing the built-in one when set.
 CONF_PROMPT = "prompt"
 DEFAULT_PROMPT = ""
+# Ask for a spoken confirmation before unlocking, disarming or opening up the house.
+CONF_CONFIRM_SENSITIVE = "confirm_sensitive_actions"
+DEFAULT_CONFIRM_SENSITIVE = False
+# Tool names and entity domains treated as sensitive when the option is on.
+SENSITIVE_TOOL_NAMES = frozenset({"HassTurnOn", "HassTurnOff", "control_ha_device"})
+SENSITIVE_DOMAINS = frozenset({"lock", "alarm_control_panel", "cover"})
 
 
 # Default values
@@ -219,6 +225,9 @@ CONF_TTS_DEFAULT_EMOTION = "tts_default_emotion"
 DEFAULT_TTS_EMOTION = TTS_NONE
 CONF_TTS_DEFAULT_PACE = "tts_default_pace"
 DEFAULT_TTS_PACE = TTS_NONE
+# Pronunciation hints, one "word=ipa" per line, sent as phoneme_hints.
+CONF_TTS_PRONUNCIATIONS = "tts_pronunciations"
+DEFAULT_TTS_PRONUNCIATIONS = ""
 # Per-request options accepted from tts.speak / the Assist pipeline
 TTS_OPTION_EMOTION = "emotion"
 TTS_OPTION_PACE = "pace"
