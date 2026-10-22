@@ -14,14 +14,14 @@
 [![Hassfest](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml)
 [![Tests](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml)
 
-HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a conversation agent powered by Mistral Large 4 that can control your devices through tool calling, speech-to-text with Voxtral 2 and text-to-speech with Voxtral TTS — all from a single Mistral API key.
+HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a conversation agent powered by Mistral Small 4 or Large 4 that can control your devices through tool calling, speech-to-text with Voxtral 3 and text-to-speech with Voxtral TTS 3 — all from a single Mistral API key.
 
 ## Features
 
-- **Conversation agent** — Mistral Large 4 (1M context, multimodal) as an Assist conversation agent, with Mistral Medium and Small also selectable.
+- **Conversation agent** — Mistral Small 4 by default (the model Mistral runs in its own voice pipeline), with Mistral Large 4 (1M context, multimodal) and Mistral Medium 3.5 also selectable. Each Home Assistant conversation (user, device or satellite) gets its own Mistral conversation.
 - **Device control by voice** — the model calls Home Assistant tools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with your live home context injected into every request.
-- **Speech-to-text** — Voxtral 2 (Voxtral Mini Transcribe 2) with home-automation vocabulary biasing, 13 languages.
-- **Text-to-speech** — Voxtral TTS (`voxtral-mini-tts-2603`).
+- **Speech-to-text** — Voxtral 3 (Voxtral Mini Transcribe 3) with multi-word home-automation vocabulary biasing, 13 languages.
+- **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`) with preset voices per language (Marie for French by default), selectable per Assist pipeline.
 - **Direct voice queries** — "Demande à Homestral …" / "Ask Homestral …" through the `HomestralQuery` intent; the sentence files are installed automatically.
 - **Mistral agents** — route conversations through a Mistral agent instead of a plain model.
 - **Tool-loop bound** — cap the number of tool calls a single request may trigger (1–10, default 5).
@@ -118,12 +118,13 @@ data:
 
 | Role | Model | Notes |
 | --- | --- | --- |
-| Chat (default) | `mistral-large-latest` | Mistral Large 4 — flagship, multimodal, 1M context |
-| Chat | `mistral-large-4` | Mistral Large 4, pinned preview ID |
+| Chat (default) | `mistral-small-latest` | Mistral Small 4 — sub-second voice turns, Apache 2.0 |
+| Chat | `mistral-large-latest` | Mistral Large 4 — flagship, multimodal, 1M context |
 | Chat | `mistral-medium-latest` | Mistral Medium 3.5 |
-| Chat | `mistral-small-latest` | Mistral Small 4 |
-| Speech-to-text | `voxtral-mini-latest` | Voxtral Mini Transcribe 2, with V1 chat fallback |
-| Text-to-speech | `voxtral-mini-tts-2603` | Voxtral TTS |
+| Speech-to-text | `voxtral-mini-transcribe-3-0` | Voxtral Mini Transcribe 3, with chat-audio fallback |
+| Text-to-speech | `voxtral-mini-tts-3-0` | Voxtral TTS 3, preset voices per language |
+
+Entries created with the former `mistral-large-4` id are mapped to `mistral-large-latest` automatically.
 
 ## Troubleshooting
 

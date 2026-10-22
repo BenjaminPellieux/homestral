@@ -23,6 +23,7 @@ from .const import (
     DOMAIN,
     MAX_TOOL_ITERATIONS,
     MIN_TOOL_ITERATIONS,
+    resolve_chat_model,
 )
 from .helpers import create_mistral_client
 
@@ -42,7 +43,8 @@ def _options_schema(defaults: Mapping[str, Any]) -> vol.Schema:
         {
             vol.Optional(CONF_USE_AGENT, default=defaults.get(CONF_USE_AGENT, False)): bool,
             vol.Optional(CONF_AGENT_ID, default=defaults.get(CONF_AGENT_ID, "")): str,
-            vol.Optional(CONF_MODEL, default=defaults.get(CONF_MODEL, DEFAULT_CHAT_MODEL)): vol.In(
+            # Entries created by earlier releases may hold a model id that is no longer offered.
+            vol.Optional(CONF_MODEL, default=resolve_chat_model(defaults.get(CONF_MODEL, DEFAULT_CHAT_MODEL))): vol.In(
                 AVAILABLE_CHAT_MODELS
             ),
             vol.Optional(

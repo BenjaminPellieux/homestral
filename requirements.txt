@@ -2,10 +2,10 @@
 # Runtime requirements are declared in custom_components/homestral/manifest.json
 # and installed by Home Assistant.
 homeassistant>=2026.2.3
-mistralai==3.2.0
+mistralai[realtime]==3.3.0
 pydub==0.25.1
 audioop-lts; python_version >= "3.13"
 pyyaml
 pytest>=9.1.1
-pytest-asyncio>=0.24
+pytest-asyncio>=1.4.0
 ruff

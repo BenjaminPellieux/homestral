@@ -1,10 +1,10 @@
 """
-Tests for the model constants and manifest (Mistral Large 4 + Voxtral 2 stack).
+Tests for the model constants and manifest (Mistral Small 4 / Large 4 + Voxtral 3 stack).
 
-Verifie que la configuration pointe vers les bons modeles et que le manifest
-exige le SDK mistralai compatible. Verifie aussi que chaque mot du vocabulaire
-domotique respecte la contrainte context_bias de Voxtral 2 (un seul mot, sans
-espace ni virgule — pattern ^[^,\\s]+$).
+Verifie que la configuration pointe vers les identifiants Voxtral 3 documentes,
+que le manifest exige le SDK mistralai avec l'extra realtime, que la table des
+voix TTS est coherente et que le vocabulaire context_bias reste propre
+(phrases multi-mots autorisees avec Voxtral 3, mais sans virgule).
 """
 
 import json
@@ -20,46 +20,75 @@ MANIFEST_PATH = Path(__file__).parent.parent / "custom_components" / "homestral"
 CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_components" / "homestral" / "custom_sentences"
 
 EXPECTED_CHAT_MODELS = {
+    "mistral-small-latest",  # Mistral Small 4 (voice default)
     "mistral-large-latest",  # Mistral Large 4 (flagship)
-    "mistral-large-4",  # Mistral Large 4 — pinned preview ID
     "mistral-medium-latest",  # Mistral Medium 3.5
-    "mistral-small-latest",  # Mistral Small 4
 }
 
 
 def test_default_chat_model():
-    assert const.DEFAULT_CHAT_MODEL == "mistral-large-latest"
+    assert const.DEFAULT_CHAT_MODEL == "mistral-small-latest"
 
 
 def test_available_chat_models():
-    """Les 4 modeles de chat selectables sont proposes."""
-    assert len(const.AVAILABLE_CHAT_MODELS) == 4
-    assert EXPECTED_CHAT_MODELS.issubset(set(const.AVAILABLE_CHAT_MODELS))
+    """Les 3 alias de chat selectables sont proposes, sans id non documente."""
+    assert set(const.AVAILABLE_CHAT_MODELS) == EXPECTED_CHAT_MODELS
+    assert len(const.AVAILABLE_CHAT_MODELS) == len(EXPECTED_CHAT_MODELS)
     assert const.DEFAULT_CHAT_MODEL in const.AVAILABLE_CHAT_MODELS
 
 
-def test_default_stt_model():
-    assert const.DEFAULT_STT_MODEL == "voxtral-mini-latest"
+def test_legacy_chat_model_aliases_resolve_to_available_models():
+    for legacy, current in const.LEGACY_CHAT_MODEL_ALIASES.items():
+        assert legacy not in const.AVAILABLE_CHAT_MODELS
+        assert current in const.AVAILABLE_CHAT_MODELS
+    assert const.resolve_chat_model("mistral-large-4") == "mistral-large-latest"
+    assert const.resolve_chat_model("mistral-large-latest") == "mistral-large-latest"
+    assert const.resolve_chat_model("unknown-model") == const.DEFAULT_CHAT_MODEL
+    assert const.resolve_chat_model(None) == const.DEFAULT_CHAT_MODEL
 
 
-def test_default_tts_model():
-    assert const.DEFAULT_TTS_MODEL == "voxtral-mini-tts-2603"
+def test_stt_models_are_voxtral3():
+    assert const.DEFAULT_STT_MODEL == const.STT_MODEL_BATCH_MINI == "voxtral-mini-transcribe-3-0"
+    assert const.STT_MODEL_BATCH_SMALL == "voxtral-small-transcribe-3-0"
+    assert const.STT_MODEL_REALTIME == "voxtral-mini-transcribe-realtime-3-0"
+    assert const.STT_MODEL_CHAT_FALLBACK == "voxtral-small-latest"
+
+
+def test_default_tts_model_and_format():
+    assert const.DEFAULT_TTS_MODEL == "voxtral-mini-tts-3-0"
+    assert const.DEFAULT_TTS_FORMAT in {"mp3", "wav", "pcm", "flac", "opus"}
+
+
+def test_tts_voices_table():
+    """Chaque langue a au moins une voix preset Voxtral 3, ids uniques."""
+    assert const.DEFAULT_TTS_LANGUAGE in const.TTS_VOICES
+    seen: set[str] = set()
+    for language, voices in const.TTS_VOICES.items():
+        assert re.fullmatch(r"[a-z]{2}", language), language
+        assert voices, f"no voice for {language}"
+        for voice_id, name in voices:
+            assert re.fullmatch(r"voice_\d+", voice_id), voice_id
+            assert name and name == name.strip()
+            assert voice_id not in seen, f"duplicate voice id {voice_id}"
+            seen.add(voice_id)
 
 
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.2.1"
-    assert "mistralai==3.2.0" in manifest["requirements"]
+    assert manifest["version"] == "0.2.2"
+    assert "mistralai[realtime]==3.3.0" in manifest["requirements"]
 
 
-def test_home_automation_vocab_single_word_constraint():
-    """Chaque entree du context_bias Voxtral 2 doit etre un seul mot."""
-    pattern = re.compile(r"^[^,\s]+$")
+def test_home_automation_vocab_entries_are_clean():
+    """Entrees context_bias non vides, sans virgule, sans espace parasite, uniques."""
     assert const.HOME_AUTOMATION_VOCAB, "HOME_AUTOMATION_VOCAB must not be empty"
-    for word in const.HOME_AUTOMATION_VOCAB:
-        assert isinstance(word, str)
-        assert pattern.match(word), f"context_bias entry must be a single word (no space, no comma): {word!r}"
+    lowered = [entry.lower() for entry in const.HOME_AUTOMATION_VOCAB]
+    assert len(lowered) == len(set(lowered)), "duplicate vocabulary entries"
+    for entry in const.HOME_AUTOMATION_VOCAB:
+        assert isinstance(entry, str)
+        assert entry and entry == entry.strip(), repr(entry)
+        assert "," not in entry, f"context_bias entry must not contain a comma: {entry!r}"
 
 
 @pytest.mark.parametrize("lang", ["fr", "en"])

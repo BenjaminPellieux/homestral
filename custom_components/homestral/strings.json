@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to Mistral AI",
-        "description": "Enter your Mistral AI API key. Speech-to-text (Voxtral 2) and text-to-speech (Voxtral TTS) are set up automatically with the same key.",
+        "description": "Enter your Mistral AI API key. Speech-to-text (Voxtral 3) and text-to-speech (Voxtral TTS 3) are set up automatically with the same key.",
         "data": {
           "api_key": "Mistral API key",
           "use_agent": "Use a Mistral agent",
