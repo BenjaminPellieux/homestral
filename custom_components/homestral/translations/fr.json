@@ -10,14 +10,20 @@
           "use_agent": "Utiliser un agent Mistral",
           "agent_id": "Identifiant de l'agent",
           "model": "Modèle de chat",
-          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête"
+          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête",
+          "llm_hass_api": "Contrôle de Home Assistant",
+          "legacy_tools": "Outils HomeStral historiques",
+          "prompt": "Instructions personnalisées"
         },
         "data_description": {
           "api_key": "Créez une clé sur console.mistral.ai avec accès aux modèles Mistral Large et Voxtral.",
           "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
           "agent_id": "Utilisé uniquement si « Utiliser un agent Mistral » est activé.",
           "model": "Modèle de chat Mistral utilisé pour les conversations et les requêtes vocales.",
-          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10)."
+          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10).",
+          "llm_hass_api": "API Home Assistant que le modèle peut utiliser. Assist expose vos entités comme des intentions vocales et respecte le réglage « exposé à Assist » de chaque entité ainsi que la pièce du satellite qui parle.",
+          "legacy_tools": "Envoyer également les outils propres à HomeStral (control_ha_device, get_ha_state, list_ha_entities). Ils peuvent agir sur des entités non exposées à Assist : ils restent donc désactivés, sauf si vous avez mis à jour depuis une version antérieure.",
+          "prompt": "Remplace les instructions intégrées de HomeStral. Laissez vide pour les conserver (réponses courtes à l'oral, heure actuelle, météo locale, guide d'utilisation des outils)."
         }
       }
     },
@@ -50,7 +56,10 @@
           "tts_voice": "Voix par défaut",
           "tts_default_emotion": "Émotion par défaut",
           "tts_default_pace": "Vitesse de parole par défaut",
-          "tts_expressiveness": "Expressivité"
+          "tts_expressiveness": "Expressivité",
+          "llm_hass_api": "Contrôle de Home Assistant",
+          "legacy_tools": "Outils HomeStral historiques",
+          "prompt": "Instructions personnalisées"
         },
         "data_description": {
           "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
@@ -68,7 +77,10 @@
           "tts_voice": "Identifiant de voix Voxtral utilisé quand le pipeline Assist n'en sélectionne pas, par exemple voice_592 (Marie, français). Laissez vide pour utiliser la première voix prédéfinie de la langue parlée.",
           "tts_default_emotion": "Interprétation appliquée à chaque réponse, par exemple calme ou chaleureuse. Testée en anglais, elle devrait fonctionner en français.",
           "tts_default_pace": "Vitesse de parole appliquée à chaque réponse, de very-slow à very-fast.",
-          "tts_expressiveness": "0 conserve le réglage par défaut de Mistral. Entre 1.0 et 5.0, des valeurs plus élevées donnent une diction plus marquée au détriment de la similarité et de la stabilité de la voix."
+          "tts_expressiveness": "0 conserve le réglage par défaut de Mistral. Entre 1.0 et 5.0, des valeurs plus élevées donnent une diction plus marquée au détriment de la similarité et de la stabilité de la voix.",
+          "llm_hass_api": "API Home Assistant que le modèle peut utiliser. Assist expose vos entités comme des intentions vocales et respecte le réglage « exposé à Assist » de chaque entité ainsi que la pièce du satellite qui parle.",
+          "legacy_tools": "Envoyer également les outils propres à HomeStral (control_ha_device, get_ha_state, list_ha_entities). Ils peuvent agir sur des entités non exposées à Assist : ils restent donc désactivés, sauf si vous avez mis à jour depuis une version antérieure.",
+          "prompt": "Remplace les instructions intégrées de HomeStral. Laissez vide pour les conserver (réponses courtes à l'oral, heure actuelle, météo locale, guide d'utilisation des outils)."
         }
       }
     }

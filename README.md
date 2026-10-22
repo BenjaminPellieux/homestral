@@ -19,7 +19,7 @@ HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a co
 ## Features
 
 - **Conversation agent** — Mistral Small 4 by default (the model Mistral runs in its own voice pipeline), with Mistral Large 4 (1M context, multimodal) and Mistral Medium 3.5 also selectable. Each Home Assistant conversation (user, device or satellite) gets its own Mistral conversation.
-- **Device control by voice** — the model calls Home Assistant tools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with your live home context injected into every request.
+- **Device control by voice** — the model acts through Home Assistant's own Assist tools, so it only touches the entities you exposed to Assist and understands "ici" as the area of the satellite you are speaking to. Answers stream into the conversation as they are generated.
 - **Speech-to-text** — Voxtral 3 realtime transcription: the audio is streamed to Voxtral while you speak, Voxtral's turn detection ends the utterance as soon as you stop (before Home Assistant's silence timeout), and the names of your exposed entities, areas and floors bias the recognition. Falls back to file transcription (Voxtral Mini or Small Transcribe 3) automatically. 13 languages.
 - **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`), synthesized sentence by sentence while the answer is still being written so playback starts early, with preset voices per language (Marie for French by default), emotion, speaking pace and expressiveness.
 - **Direct voice queries** — "Demande à Homestral …" / "Ask Homestral …" through the `HomestralQuery` intent; the sentence files are installed automatically.
@@ -117,6 +117,23 @@ data:
 ```
 
 The delivery tags are tested in English by Mistral, and expected but untested in French.
+
+### Acting on Home Assistant
+
+The model controls your home through Home Assistant's own Assist tools. Two consequences matter:
+
+- **Only the entities you exposed to Assist can be controlled.** Manage them in **Settings → Voice assistants → Expose**. An entity that is not exposed is invisible to the model.
+- **The satellite's area is known**, so "allume la lumière ici" or "ferme les volets de cette pièce" resolve without naming entities.
+
+| Option | Default | Use |
+| --- | --- | --- |
+| Home Assistant control | `assist` | Which Home Assistant API the model may act through. Clearing it leaves the model with no way to act (answers only). |
+| Legacy HomeStral tools | off | Also send `control_ha_device`, `get_ha_state` and `list_ha_entities`. They reach entities that are **not** exposed to Assist, so they stay off unless you upgraded from 0.4.0 or earlier, where they were the only way to act. |
+| Custom instructions | empty | Replaces HomeStral's built-in prompt. Empty keeps it (short spoken answers, current time, local weather, tool guidance). |
+
+Upgrading from an earlier release keeps the legacy tools enabled so nothing stops working; turn them off once you have exposed the entities you want the assistant to reach. The `homestral.control_device` service is unaffected either way.
+
+When the assistant ends its answer with a question, Home Assistant keeps the microphone open so you can reply without repeating the wake word.
 
 ## Usage
 

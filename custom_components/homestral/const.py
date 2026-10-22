@@ -10,6 +10,18 @@ CONF_USE_AGENT = "use_agent"
 CONF_AGENT_ID = "agent_id"
 CONF_MODEL = "model"
 CONF_MAX_TOOL_ITERATIONS = "max_tool_iterations"
+# Home Assistant LLM APIs exposed to the model (llm.async_get_apis); "assist" exposes the
+# Assist intents, which respect the per-entity "exposed to Assist" setting and the area of
+# the satellite that is speaking.
+CONF_LLM_HASS_API = "llm_hass_api"
+DEFAULT_LLM_HASS_API = ["assist"]
+# HomeStral's own tools (control_ha_device, get_ha_state, list_ha_entities). They bypass the
+# exposure settings, so they are off for new installs and kept on for migrated entries.
+CONF_LEGACY_TOOLS = "legacy_tools"
+DEFAULT_LEGACY_TOOLS = False
+# Extra system prompt replacing the built-in one when set.
+CONF_PROMPT = "prompt"
+DEFAULT_PROMPT = ""
 
 
 # Default values

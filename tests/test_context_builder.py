@@ -133,4 +133,11 @@ async def test_build_ha_context_mentions_weather_and_domains():
 
     assert "Date et heure actuelles" in context
     assert "weather.maison" in context and "21°C" in context and "humidité 40%" in context
-    assert "Domaines HA disponibles : light, weather" in context
+    # Spoken-answer guidance replaces the markdown-friendly phrasing
+    assert "lue à voix haute" in context
+    assert "que si tu as vraiment besoin d'une précision" in context
+    # With the Home Assistant LLM API, live state comes from GetLiveContext, not a domain dump
+    assert "Domaines HA disponibles" not in context
+
+    legacy_context = await cb.build_ha_context(hass, legacy_tools=True)
+    assert "Domaines HA disponibles : light, weather" in legacy_context

@@ -127,11 +127,21 @@ async def async_stt_vocabulary(hass: HomeAssistant, entry: ConfigEntry) -> list[
 # ---------------------------------------------------------------------------
 
 
-async def build_ha_context(hass: HomeAssistant) -> str:
-    """Build the system instructions injected into every Mistral conversation."""
+async def build_ha_context(hass: HomeAssistant, *, legacy_tools: bool = False) -> str:
+    """Build the system instructions injected into every Mistral conversation.
+
+    The answer is spoken by a text-to-speech engine, so the prompt asks for short
+    spoken sentences without markdown. A trailing question mark makes Home
+    Assistant keep the microphone open (``ChatLog.continue_conversation``), which
+    is why the model is told to end with a question only for a real clarification.
+
+    With the Home Assistant LLM API active, live state comes from its own tools
+    (``GetLiveContext``); the entity-domain listing is only added for entries that
+    still rely on HomeStral's legacy tools.
+    """
     now = datetime.now()
     lines = [
-        "Tu es un assistant domotique intelligent pour Home Assistant. Réponds toujours en français.",
+        "Tu es l'assistant domotique de cette maison, connecté à Home Assistant. Réponds toujours en français.",
         f"Date et heure actuelles : {now.strftime('%A %d %B %Y à %H:%M')}",
     ]
 
@@ -145,15 +155,22 @@ async def build_ha_context(hass: HomeAssistant) -> str:
             + (f", humidité {a.get('humidity')}%" if a.get("humidity") else "")
         )
 
-    domains = sorted({s.domain for s in hass.states.async_all()})
-    if domains:
-        lines.append(f"Domaines HA disponibles : {', '.join(domains)}")
+    if legacy_tools:
+        domains = sorted({s.domain for s in hass.states.async_all()})
+        if domains:
+            lines.append(f"Domaines HA disponibles : {', '.join(domains)}")
 
     lines.append(
-        "Instructions : utilise les tools HA pour accéder aux données et contrôler les appareils. "
-        "Utilise control_ha_device pour allumer/éteindre des lumières, régler le chauffage, ouvrir les volets, etc. "
-        "Utilise get_ha_state ou list_ha_entities pour connaître l'état actuel avant d'agir si nécessaire. "
-        "Pour les informations externes (météo d'autres villes, actualités, etc.), utilise la recherche web. "
-        "Ne dis jamais que tu n'as pas accès aux données si un tool peut y répondre."
+        "Ta réponse est lue à voix haute : fais des phrases courtes et parlées, sans markdown, "
+        "sans liste à puces et sans emoji. Une ou deux phrases suffisent."
+    )
+    lines.append(
+        "Utilise les outils pour agir et pour connaître l'état réel de la maison, puis confirme brièvement "
+        "ce que tu as fait. Ne dis jamais que tu n'as pas accès à une information si un outil peut y répondre. "
+        "Pour les informations extérieures à la maison (météo d'une autre ville, actualités), utilise la recherche web."
+    )
+    lines.append(
+        "Ne termine ta réponse par une question que si tu as vraiment besoin d'une précision pour agir : "
+        "le micro reste alors ouvert pour entendre la réponse de l'utilisateur."
     )
     return "\n".join(lines)
