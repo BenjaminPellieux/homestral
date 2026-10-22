@@ -16,13 +16,34 @@ from .const import (
     CONF_API_KEY,
     CONF_MAX_TOOL_ITERATIONS,
     CONF_MODEL,
+    CONF_STT_BATCH_MODEL,
+    CONF_STT_BIAS_ENTITIES,
+    CONF_STT_CHAT_FALLBACK,
+    CONF_STT_CUSTOM_VOCABULARY,
+    CONF_STT_LANGUAGE,
+    CONF_STT_MODE,
+    CONF_STT_STREAMING_DELAY_MS,
+    CONF_STT_TURN_DETECTION,
     CONF_USE_AGENT,
     DEFAULT_CHAT_MODEL,
     DEFAULT_MAX_TOOL_ITERATIONS,
     DEFAULT_NAME,
+    DEFAULT_STT_BATCH_MODEL,
+    DEFAULT_STT_BIAS_ENTITIES,
+    DEFAULT_STT_CHAT_FALLBACK,
+    DEFAULT_STT_CUSTOM_VOCABULARY,
+    DEFAULT_STT_LANGUAGE,
+    DEFAULT_STT_MODE,
+    DEFAULT_STT_STREAMING_DELAY_MS,
+    DEFAULT_STT_TURN_DETECTION,
     DOMAIN,
     MAX_TOOL_ITERATIONS,
     MIN_TOOL_ITERATIONS,
+    STT_BATCH_MODELS,
+    STT_LANGUAGE_CHOICES,
+    STT_MODES,
+    STT_STREAMING_DELAY_CHOICES,
+    STT_TURN_DETECTION_CHOICES,
     resolve_chat_model,
 )
 from .helpers import create_mistral_client
@@ -38,24 +59,56 @@ class CannotConnect(Exception):
     """Mistral could not be reached."""
 
 
+def _chat_options_schema(defaults: Mapping[str, Any]) -> dict:
+    return {
+        vol.Optional(CONF_USE_AGENT, default=defaults.get(CONF_USE_AGENT, False)): bool,
+        vol.Optional(CONF_AGENT_ID, default=defaults.get(CONF_AGENT_ID, "")): str,
+        # Entries created by earlier releases may hold a model id that is no longer offered.
+        vol.Optional(CONF_MODEL, default=resolve_chat_model(defaults.get(CONF_MODEL, DEFAULT_CHAT_MODEL))): vol.In(
+            AVAILABLE_CHAT_MODELS
+        ),
+        vol.Optional(
+            CONF_MAX_TOOL_ITERATIONS,
+            default=defaults.get(CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS),
+        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_TOOL_ITERATIONS, max=MAX_TOOL_ITERATIONS)),
+    }
+
+
+def _stt_options_schema(defaults: Mapping[str, Any]) -> dict:
+    return {
+        vol.Optional(CONF_STT_MODE, default=defaults.get(CONF_STT_MODE, DEFAULT_STT_MODE)): vol.In(STT_MODES),
+        vol.Optional(
+            CONF_STT_TURN_DETECTION, default=defaults.get(CONF_STT_TURN_DETECTION, DEFAULT_STT_TURN_DETECTION)
+        ): vol.In(STT_TURN_DETECTION_CHOICES),
+        vol.Optional(
+            CONF_STT_STREAMING_DELAY_MS,
+            default=defaults.get(CONF_STT_STREAMING_DELAY_MS, DEFAULT_STT_STREAMING_DELAY_MS),
+        ): vol.All(vol.Coerce(int), vol.In(STT_STREAMING_DELAY_CHOICES)),
+        vol.Optional(CONF_STT_LANGUAGE, default=defaults.get(CONF_STT_LANGUAGE, DEFAULT_STT_LANGUAGE)): vol.In(
+            STT_LANGUAGE_CHOICES
+        ),
+        vol.Optional(CONF_STT_BATCH_MODEL, default=defaults.get(CONF_STT_BATCH_MODEL, DEFAULT_STT_BATCH_MODEL)): vol.In(
+            list(STT_BATCH_MODELS)
+        ),
+        vol.Optional(
+            CONF_STT_CUSTOM_VOCABULARY,
+            default=defaults.get(CONF_STT_CUSTOM_VOCABULARY, DEFAULT_STT_CUSTOM_VOCABULARY),
+        ): str,
+        vol.Optional(
+            CONF_STT_BIAS_ENTITIES, default=defaults.get(CONF_STT_BIAS_ENTITIES, DEFAULT_STT_BIAS_ENTITIES)
+        ): bool,
+        vol.Optional(
+            CONF_STT_CHAT_FALLBACK, default=defaults.get(CONF_STT_CHAT_FALLBACK, DEFAULT_STT_CHAT_FALLBACK)
+        ): bool,
+    }
+
+
 def _options_schema(defaults: Mapping[str, Any]) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Optional(CONF_USE_AGENT, default=defaults.get(CONF_USE_AGENT, False)): bool,
-            vol.Optional(CONF_AGENT_ID, default=defaults.get(CONF_AGENT_ID, "")): str,
-            # Entries created by earlier releases may hold a model id that is no longer offered.
-            vol.Optional(CONF_MODEL, default=resolve_chat_model(defaults.get(CONF_MODEL, DEFAULT_CHAT_MODEL))): vol.In(
-                AVAILABLE_CHAT_MODELS
-            ),
-            vol.Optional(
-                CONF_MAX_TOOL_ITERATIONS,
-                default=defaults.get(CONF_MAX_TOOL_ITERATIONS, DEFAULT_MAX_TOOL_ITERATIONS),
-            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_TOOL_ITERATIONS, max=MAX_TOOL_ITERATIONS)),
-        }
-    )
+    return vol.Schema({**_chat_options_schema(defaults), **_stt_options_schema(defaults)})
 
 
-USER_SCHEMA = vol.Schema({vol.Required(CONF_API_KEY): str}).extend(_options_schema({}).schema)
+# The initial form asks for the key and the chat settings only; STT settings live in the options flow.
+USER_SCHEMA = vol.Schema({vol.Required(CONF_API_KEY): str, **_chat_options_schema({})})
 
 
 def _validate_api_key(api_key: str) -> None:
@@ -100,7 +153,7 @@ class HomestralConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HomestralOptionsFlow(OptionsFlow):
-    """Let the user change model and agent settings after setup."""
+    """Let the user change model, agent, tool-loop and speech-to-text settings after setup."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

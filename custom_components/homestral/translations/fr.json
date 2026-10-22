@@ -38,13 +38,29 @@
           "use_agent": "Utiliser un agent Mistral",
           "agent_id": "Identifiant de l'agent",
           "model": "Modèle de chat",
-          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête"
+          "max_tool_iterations": "Nombre maximal d'appels d'outils par requête",
+          "stt_mode": "Mode de reconnaissance vocale",
+          "stt_turn_detection": "Détection de fin de phrase",
+          "stt_streaming_delay_ms": "Délai de streaming temps réel (ms)",
+          "stt_language": "Langue de la reconnaissance vocale",
+          "stt_batch_model": "Modèle de transcription par fichier",
+          "stt_custom_vocabulary": "Vocabulaire personnalisé",
+          "stt_bias_entities": "Reconnaître les noms des entités exposées, des pièces et des étages",
+          "stt_chat_fallback": "Repli sur le modèle de chat audio"
         },
         "data_description": {
           "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
           "agent_id": "Utilisé uniquement si « Utiliser un agent Mistral » est activé.",
           "model": "Modèle de chat Mistral utilisé pour les conversations et les requêtes vocales.",
-          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10)."
+          "max_tool_iterations": "Limite du nombre d'appels d'outils Home Assistant qu'une seule requête peut déclencher (1 à 10).",
+          "stt_mode": "Temps réel : l'audio est envoyé à Voxtral pendant que vous parlez et le tour se termine dès que vous vous arrêtez ; fichier : l'enregistrement complet est envoyé une fois le silence détecté par Home Assistant.",
+          "stt_turn_detection": "Temps réel uniquement. « default » convient à la plupart des foyers ; « aggressive » termine les tours plus tôt pour les commandes courtes (plus de coupures si vous marquez une pause) ; « off » s'en remet à la détection de silence de Home Assistant.",
+          "stt_streaming_delay_ms": "Temps réel uniquement. Plus court = plus rapide mais moins précis ; 480 ms est le réglage de départ recommandé par Mistral.",
+          "stt_language": "Transmettre la langue du pipeline Assist à Voxtral, ou laisser Voxtral détecter la langue.",
+          "stt_batch_model": "« mini » est plus rapide et moins cher, « small » plus précis. Utilisé en mode fichier et comme repli du temps réel.",
+          "stt_custom_vocabulary": "Noms et expressions à reconnaître, un par ligne ou séparés par des virgules (un nom de famille, le surnom d'un appareil).",
+          "stt_bias_entities": "Ajoute au vocabulaire de reconnaissance les noms des entités exposées à Assist ainsi que ceux de vos pièces et étages.",
+          "stt_chat_fallback": "Si la transcription ne renvoie rien, envoyer l'audio au modèle de chat Voxtral en dernier recours (plus lent)."
         }
       }
     }

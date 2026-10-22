@@ -50,6 +50,55 @@ STT_MODEL_BATCH_SMALL = "voxtral-small-transcribe-3-0"  # /v1/audio/transcriptio
 STT_MODEL_REALTIME = "voxtral-mini-transcribe-realtime-3-0"  # websocket, turn detection
 STT_MODEL_CHAT_FALLBACK = "voxtral-small-latest"  # chat completions with input_audio (last resort)
 DEFAULT_STT_MODEL = STT_MODEL_BATCH_MINI
+# Languages accepted by the STT entity (ISO 639-1); all are in the Voxtral 3 batch and realtime sets.
+STT_SUPPORTED_LANGUAGES = ["en", "fr", "zh", "hi", "es", "ar", "pt", "ru", "de", "ja", "ko", "it", "nl"]
+# Home Assistant hands STT entities PCM 16-bit mono at 16 kHz; this is also the realtime default.
+STT_SAMPLE_RATE = 16000
+
+# STT options
+CONF_STT_MODE = "stt_mode"
+STT_MODE_REALTIME = "realtime"
+STT_MODE_BATCH = "batch"
+STT_MODES = [STT_MODE_REALTIME, STT_MODE_BATCH]
+DEFAULT_STT_MODE = STT_MODE_REALTIME
+
+CONF_STT_BATCH_MODEL = "stt_batch_model"
+STT_BATCH_MODELS = {"mini": STT_MODEL_BATCH_MINI, "small": STT_MODEL_BATCH_SMALL}
+DEFAULT_STT_BATCH_MODEL = "mini"
+
+# target_streaming_delay_ms: the API accepts 80 to 1200 ms or 2400 ms; 480 is the recommended start.
+CONF_STT_STREAMING_DELAY_MS = "stt_streaming_delay_ms"
+STT_STREAMING_DELAY_CHOICES = [240, 480, 960]
+DEFAULT_STT_STREAMING_DELAY_MS = 480
+
+CONF_STT_TURN_DETECTION = "stt_turn_detection"
+STT_TURN_DETECTION_OFF = "off"
+STT_TURN_DETECTION_DEFAULT = "default"
+STT_TURN_DETECTION_AGGRESSIVE = "aggressive"
+STT_TURN_DETECTION_CHOICES = [STT_TURN_DETECTION_OFF, STT_TURN_DETECTION_DEFAULT, STT_TURN_DETECTION_AGGRESSIVE]
+DEFAULT_STT_TURN_DETECTION = STT_TURN_DETECTION_DEFAULT
+
+CONF_STT_LANGUAGE = "stt_language"
+STT_LANGUAGE_PIPELINE = "pipeline"  # send the pipeline language as ISO 639-1
+STT_LANGUAGE_AUTO = "auto"  # let Voxtral detect it
+STT_LANGUAGE_CHOICES = [STT_LANGUAGE_PIPELINE, STT_LANGUAGE_AUTO]
+DEFAULT_STT_LANGUAGE = STT_LANGUAGE_PIPELINE
+
+CONF_STT_CUSTOM_VOCABULARY = "stt_custom_vocabulary"  # one phrase per line or comma-separated
+DEFAULT_STT_CUSTOM_VOCABULARY = ""
+CONF_STT_BIAS_ENTITIES = "stt_bias_entities"  # add exposed entity, area and floor names to context_bias
+DEFAULT_STT_BIAS_ENTITIES = True
+CONF_STT_CHAT_FALLBACK = "stt_chat_fallback"  # last-resort chat completion with audio input
+DEFAULT_STT_CHAT_FALLBACK = False
+
+# context_bias entries share the context window with the audio: keep the list short.
+STT_VOCABULARY_MAX_ENTRIES = 150
+STT_VOCABULARY_CACHE_SECONDS = 60
+# PCM kept aside during a realtime session so the batch fallback can reuse it (60 s at 16 kHz).
+STT_REALTIME_BUFFER_MAX_BYTES = STT_SAMPLE_RATE * 2 * 60
+
+# Fired on turn.eager_end (the user has probably finished speaking): a hook for pre-warming.
+EVENT_STT_EAGER_END = "homestral_stt_eager_end"
 
 # Home automation vocabulary sent as context_bias. Voxtral 3 accepts multi-word phrases;
 # entries must not contain commas (one form field per entry on the wire).

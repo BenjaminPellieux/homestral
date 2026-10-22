@@ -30,9 +30,10 @@ from .const import (
     DEFAULT_MAX_TOOL_ITERATIONS,
     resolve_chat_model,
 )
+from .context_builder import build_ha_context
 from .helpers import get_option
 from .logging_config import get_logger
-from .tools import ALL_TOOLS, HAToolExecutor, build_ha_context
+from .tools import ALL_TOOLS, HAToolExecutor
 
 _LOGGER = get_logger(__name__)
 

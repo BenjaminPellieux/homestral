@@ -38,13 +38,29 @@
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
           "model": "Chat model",
-          "max_tool_iterations": "Maximum tool calls per request"
+          "max_tool_iterations": "Maximum tool calls per request",
+          "stt_mode": "Speech-to-text mode",
+          "stt_turn_detection": "Turn detection",
+          "stt_streaming_delay_ms": "Realtime streaming delay (ms)",
+          "stt_language": "Speech-to-text language",
+          "stt_batch_model": "Batch transcription model",
+          "stt_custom_vocabulary": "Custom vocabulary",
+          "stt_bias_entities": "Recognise exposed entity, area and floor names",
+          "stt_chat_fallback": "Chat-audio fallback"
         },
         "data_description": {
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
           "model": "Mistral chat model used for conversations and voice queries.",
-          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10)."
+          "max_tool_iterations": "Upper bound on how many Home Assistant tool calls a single request may trigger (1 to 10).",
+          "stt_mode": "Realtime streams the audio to Voxtral while you speak and ends the turn as soon as you stop; batch uploads the whole recording once Home Assistant detects silence.",
+          "stt_turn_detection": "Realtime only. Default suits most homes; aggressive ends turns sooner for short commands (more cut-offs when you pause); off relies on Home Assistant's silence detection.",
+          "stt_streaming_delay_ms": "Realtime only. Lower is faster but less accurate; 480 ms is Mistral's recommended starting point.",
+          "stt_language": "Send the Assist pipeline language to Voxtral, or let Voxtral detect the language.",
+          "stt_batch_model": "mini is faster and cheaper, small is more accurate. Used in batch mode and as the realtime fallback.",
+          "stt_custom_vocabulary": "Names and phrases to recognise, one per line or separated by commas (a family name, a device nickname).",
+          "stt_bias_entities": "Adds the friendly names of the entities exposed to Assist plus your area and floor names to the recognition vocabulary.",
+          "stt_chat_fallback": "If transcription returns nothing, send the audio to the Voxtral chat model as a last resort (slower)."
         }
       }
     }
