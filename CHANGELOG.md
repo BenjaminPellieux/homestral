@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-22
+
+Phase 2 of the Voxtral 3 plan: speak.
+
+### Added
+
+- **Streamed text-to-speech**: the Assist pipeline now streams the conversation answer into the text-to-speech entity. The text is split into sentences, synthesized in batches (the first sentence immediately, then up to three, then everything available) and returned as one streaming WAV: a header with `nframes=0` followed by raw 24 kHz PCM, so playback starts before the model has finished writing.
+- **Expressive delivery**: new options for a default voice, a default emotion (the 34 documented values), a default speaking pace (`very-slow` to `very-fast`) and expressiveness (1.0 to 5.0). `tts.speak` also accepts per-request `emotion` and `pace` options. The tags are applied to the first sentence batch, so the whole answer keeps the style.
+
+### Changed
+
+- **Streaming format**: the streamed path requests `pcm` (time to first audio about 0.8 s, against about 3 s for mp3); the one-shot path keeps `wav` so Home Assistant can cache it.
+- **Dependencies**: `sentence-stream==1.3.0` added to the manifest (the sentence splitter Home Assistant itself uses for streamed speech).
+
+### Tests
+
+- 147 tests: `tests/test_tts.py` covers the streaming path (exactly one WAV header, the batching schedule, first-batch-only tags, truncation when the API fails mid-stream, unknown tag values dropped) and the one-shot path.
+
 ## [0.3.0] - 2026-10-22
 
 Phase 1 of the Voxtral 3 plan: listen. Speech-to-text now runs on Voxtral Mini Transcribe Realtime 3.

@@ -21,7 +21,7 @@ HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a co
 - **Conversation agent** — Mistral Small 4 by default (the model Mistral runs in its own voice pipeline), with Mistral Large 4 (1M context, multimodal) and Mistral Medium 3.5 also selectable. Each Home Assistant conversation (user, device or satellite) gets its own Mistral conversation.
 - **Device control by voice** — the model calls Home Assistant tools (`control_ha_device`, `get_ha_state`, `list_ha_entities`, `get_ha_weather`) with your live home context injected into every request.
 - **Speech-to-text** — Voxtral 3 realtime transcription: the audio is streamed to Voxtral while you speak, Voxtral's turn detection ends the utterance as soon as you stop (before Home Assistant's silence timeout), and the names of your exposed entities, areas and floors bias the recognition. Falls back to file transcription (Voxtral Mini or Small Transcribe 3) automatically. 13 languages.
-- **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`) with preset voices per language (Marie for French by default), selectable per Assist pipeline.
+- **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`), synthesized sentence by sentence while the answer is still being written so playback starts early, with preset voices per language (Marie for French by default), emotion, speaking pace and expressiveness.
 - **Direct voice queries** — "Demande à Homestral …" / "Ask Homestral …" through the `HomestralQuery` intent; the sentence files are installed automatically.
 - **Mistral agents** — route conversations through a Mistral agent instead of a plain model.
 - **Tool-loop bound** — cap the number of tool calls a single request may trigger (1–10, default 5).
@@ -90,6 +90,33 @@ Speech-to-text runs in **realtime** mode by default: each utterance opens a Voxt
 | Chat-audio fallback | off | Last resort when transcription returns nothing: slower, uses the Voxtral chat model. |
 
 The event `homestral_stt_eager_end` is fired when Voxtral believes you have probably finished speaking (before the confirmed end of turn); automations can use it to pre-warm something.
+
+### Voices, emotion and pace
+
+The voice is chosen per Assist pipeline (**Settings → Voice assistants → your assistant → Text-to-speech**) or, when the pipeline leaves it unset, per entry in the options below.
+
+| Option | Default | Use |
+| --- | --- | --- |
+| Default voice | empty | A Voxtral voice id such as `voice_592` (Marie, French). Empty uses the first preset voice of the spoken language. |
+| Default emotion | none | One of the 34 documented emotions (`calm`, `warm`, `urgent`, `playful`, …) applied to every answer. |
+| Default speaking pace | none | `very-slow`, `slow`, `moderate`, `fast` or `very-fast`. |
+| Expressiveness | 0 | `0` keeps Mistral's default. Between 1.0 and 5.0, higher values give a stronger delivery at the cost of voice similarity and stability. |
+
+For a one-off announcement, `tts.speak` accepts `emotion` and `pace` in its options:
+
+```yaml
+action: tts.speak
+target:
+  entity_id: tts.voxtral_tts
+data:
+  media_player_entity_id: media_player.salon
+  message: Le portail est resté ouvert.
+  options:
+    emotion: urgent
+    pace: fast
+```
+
+The delivery tags are tested in English by Mistral, and expected but untested in French.
 
 ## Usage
 
