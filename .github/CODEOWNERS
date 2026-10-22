@@ -1,0 +1,25 @@
+# CODEOWNERS — HomeStral
+#
+# The maintainer (@BenjaminPellieux) is the default owner for the whole repo.
+# Specific areas require their review before merge (enforced by branch protection).
+
+# Everything — default owner
+* @BenjaminPellieux
+
+# Integration code — highest sensitivity (handles API keys, controls devices)
+/custom_components/homestral/ @BenjaminPellieux
+
+# Security-sensitive files
+/SECURITY.md @BenjaminPellieux
+/.github/CODEOWNERS @BenjaminPellieux
+/.github/dependabot.yml @BenjaminPellieux
+
+# CI/CD workflows — supply-chain risk
+/.github/workflows/ @BenjaminPellieux
+
+# Manifest — defines what HA installs and runs
+/custom_components/homestral/manifest.json @BenjaminPellieux
+
+# Requirements — dependency changes affect the runtime
+/requirements.txt @BenjaminPellieux
+/pyproject.toml @BenjaminPellieux

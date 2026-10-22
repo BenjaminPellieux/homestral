@@ -13,6 +13,9 @@
 [![HACS](https://github.com/BenjaminPellieux/homestral/actions/workflows/hacs.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/hacs.yaml)
 [![Hassfest](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/hassfest.yaml)
 [![Tests](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/tests.yaml)
+[![CodeQL](https://github.com/BenjaminPellieux/homestral/actions/workflows/codeql.yaml/badge.svg)](https://github.com/BenjaminPellieux/homestral/actions/workflows/codeql.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/BenjaminPellieux/homestral/badge)](https://scorecard.dev/viewer/?uri=github.com/BenjaminPellieux/homestral)
+[![Security](https://img.shields.io/badge/security-report-blue.svg)](SECURITY.md)
 
 HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a conversation agent powered by Mistral Small 4 or Large 4 that can control your devices through tool calling, speech-to-text with Voxtral 3 and text-to-speech with Voxtral TTS 3 — all from a single Mistral API key.
 
@@ -211,9 +214,13 @@ logger:
 
 Still stuck? [Open an issue](https://github.com/BenjaminPellieux/homestral/issues/new/choose) with redacted logs.
 
+## Security
+
+Found a vulnerability? Please report it privately — see [SECURITY.md](SECURITY.md) for our security policy, supported versions, and how to submit a report. **Do not open a public issue for security vulnerabilities.**
+
 ## Contributing
 
-Contributions are welcome — see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development setup, test suite and release process, and [DEVELOPMENT.md](DEVELOPMENT.md) for the architecture.
+Contributions are welcome — see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development setup, test suite and release process, and [DEVELOPMENT.md](DEVELOPMENT.md) for the architecture. By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
