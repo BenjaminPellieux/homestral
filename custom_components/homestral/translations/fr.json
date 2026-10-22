@@ -46,7 +46,11 @@
           "stt_batch_model": "Modèle de transcription par fichier",
           "stt_custom_vocabulary": "Vocabulaire personnalisé",
           "stt_bias_entities": "Reconnaître les noms des entités exposées, des pièces et des étages",
-          "stt_chat_fallback": "Repli sur le modèle de chat audio"
+          "stt_chat_fallback": "Repli sur le modèle de chat audio",
+          "tts_voice": "Voix par défaut",
+          "tts_default_emotion": "Émotion par défaut",
+          "tts_default_pace": "Vitesse de parole par défaut",
+          "tts_expressiveness": "Expressivité"
         },
         "data_description": {
           "use_agent": "Faire passer les conversations par un agent Mistral plutôt que par un simple modèle de chat.",
@@ -60,7 +64,11 @@
           "stt_batch_model": "« mini » est plus rapide et moins cher, « small » plus précis. Utilisé en mode fichier et comme repli du temps réel.",
           "stt_custom_vocabulary": "Noms et expressions à reconnaître, un par ligne ou séparés par des virgules (un nom de famille, le surnom d'un appareil).",
           "stt_bias_entities": "Ajoute au vocabulaire de reconnaissance les noms des entités exposées à Assist ainsi que ceux de vos pièces et étages.",
-          "stt_chat_fallback": "Si la transcription ne renvoie rien, envoyer l'audio au modèle de chat Voxtral en dernier recours (plus lent)."
+          "stt_chat_fallback": "Si la transcription ne renvoie rien, envoyer l'audio au modèle de chat Voxtral en dernier recours (plus lent).",
+          "tts_voice": "Identifiant de voix Voxtral utilisé quand le pipeline Assist n'en sélectionne pas, par exemple voice_592 (Marie, français). Laissez vide pour utiliser la première voix prédéfinie de la langue parlée.",
+          "tts_default_emotion": "Interprétation appliquée à chaque réponse, par exemple calme ou chaleureuse. Testée en anglais, elle devrait fonctionner en français.",
+          "tts_default_pace": "Vitesse de parole appliquée à chaque réponse, de very-slow à very-fast.",
+          "tts_expressiveness": "0 conserve le réglage par défaut de Mistral. Entre 1.0 et 5.0, des valeurs plus élevées donnent une diction plus marquée au détriment de la similarité et de la stabilité de la voix."
         }
       }
     }

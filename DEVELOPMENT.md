@@ -74,9 +74,9 @@ This module defines the tool-calling layer used for voice-driven Home Assistant 
 - `build_ha_context()`, which builds the system instructions injected into every conversation.
 
 ### `tts.py`
-This module provides the Voxtral text-to-speech platform. It includes:
-- A `TextToSpeechEntity` that synthesizes speech with Voxtral TTS (`voxtral-mini-tts-2603`) via the `/v1/audio/speech` endpoint.
-- Multi-language voice output (French by default).
+This module provides the Voxtral text-to-speech platform (`VoxtralTtsProvider`, a `TextToSpeechEntity` synthesizing speech with Voxtral TTS 3 `voxtral-mini-tts-3-0` via the `/v1/audio/speech` endpoint, multi-language with French by default). Both paths share the voice resolution (the per-request `voice` option, else the configured default, else the first preset of the language) and the `[emotion=...]` / `[pace=...]` delivery-tag prefix prepended to the text. It includes:
+- `async_stream_tts_audio` — the Assist pipeline path. The streamed answer is split into sentences with `sentence_stream.SentenceBoundaryDetector` and batched on a 1, then 3, then all-sentences schedule, so the first words play early while later batches grow for fewer requests and better prosody. Each batch is synthesized with `speech.complete_async(stream=True, response_format="pcm")` and the base64 `speech.audio.delta` chunks are decoded. The audio is returned as one streaming WAV: a single header with `nframes=0` (24 kHz, 16-bit, mono) followed by the raw PCM, so playback starts before the answer is finished. An error after audio has started truncates the answer; an error before any audio raises `HomeAssistantError`.
+- `async_get_tts_audio` — the one-shot path (`tts.speak`, cached phrases): a single `wav` request, cacheable by Home Assistant.
 
 ### `api_control.py`
 This module implements the lower-level device control layer used by the tools. It includes:

@@ -76,9 +76,23 @@ def test_tts_voices_table():
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.3.0"
-    # The realtime extra brings websockets; pydub is gone (raw PCM goes straight to the API).
-    assert manifest["requirements"] == ["mistralai[realtime]==3.3.0"]
+    assert manifest["version"] == "0.4.0"
+    # The realtime extra brings websockets, sentence-stream splits the streamed answer into
+    # sentences; pydub is gone (raw PCM goes straight to the API).
+    assert manifest["requirements"] == ["mistralai[realtime]==3.3.0", "sentence-stream>=1.3.0"]
+
+
+def test_tts_delivery_tag_values():
+    """Emotion and pace values must match the documented Voxtral TTS 3 lists."""
+    assert len(const.TTS_EMOTIONS) == 34
+    assert const.TTS_PACES == ["very-slow", "slow", "moderate", "fast", "very-fast"]
+    assert const.TTS_NONE not in const.TTS_EMOTIONS and const.TTS_NONE not in const.TTS_PACES
+    for value in (*const.TTS_EMOTIONS, *const.TTS_PACES):
+        assert value == value.strip().lower()
+    assert len(set(const.TTS_EMOTIONS)) == len(const.TTS_EMOTIONS)
+    # Voxtral TTS 3 always returns 24 kHz, 16-bit, mono.
+    assert (const.TTS_SAMPLE_RATE, const.TTS_SAMPLE_WIDTH, const.TTS_CHANNELS) == (24000, 2, 1)
+    assert const.TTS_STREAM_FORMAT == "pcm"
 
 
 def test_home_automation_vocab_entries_are_clean():
