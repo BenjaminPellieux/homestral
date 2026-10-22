@@ -76,8 +76,9 @@ def test_tts_voices_table():
 def test_manifest_requirements_and_version():
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     assert manifest["domain"] == "homestral"
-    assert manifest["version"] == "0.2.2"
-    assert "mistralai[realtime]==3.3.0" in manifest["requirements"]
+    assert manifest["version"] == "0.3.0"
+    # The realtime extra brings websockets; pydub is gone (raw PCM goes straight to the API).
+    assert manifest["requirements"] == ["mistralai[realtime]==3.3.0"]
 
 
 def test_home_automation_vocab_entries_are_clean():

@@ -10,7 +10,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/BenjaminPellieux/homestral/issues",
   "loggers": ["mistralai"],
-  "requirements": ["mistralai[realtime]==3.3.0", "pydub==0.25.1"],
+  "requirements": ["mistralai[realtime]==3.3.0"],
   "single_config_entry": true,
-  "version": "0.2.2"
+  "version": "0.3.0"
 }
