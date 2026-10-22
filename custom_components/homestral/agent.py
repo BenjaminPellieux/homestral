@@ -27,12 +27,14 @@ from mistralai.client.models import FunctionCallEntry, FunctionResultEntry, Mess
 
 from .const import (
     CONF_AGENT_ID,
+    CONF_CONFIRM_SENSITIVE,
     CONF_LEGACY_TOOLS,
     CONF_LLM_HASS_API,
     CONF_MAX_TOOL_ITERATIONS,
     CONF_MODEL,
     CONF_PROMPT,
     CONF_USE_AGENT,
+    DEFAULT_CONFIRM_SENSITIVE,
     DEFAULT_LEGACY_TOOLS,
     DEFAULT_LLM_HASS_API,
     DEFAULT_MAX_TOOL_ITERATIONS,
@@ -44,6 +46,7 @@ from .context_builder import build_ha_context
 from .helpers import get_option
 from .llm_tools import ToolRouter, build_tools
 from .logging_config import get_logger
+from .safety import guard
 from .tools import ALL_TOOLS, HAToolExecutor
 
 _LOGGER = get_logger(__name__)
@@ -261,7 +264,7 @@ class MistralTurnRunner:
                 results: list[Any] = []
                 async for _content in chat_log.async_add_delta_content_stream(
                     self._agent_id(user_input),
-                    self._transform(stream, router, results, ha_conversation_id),
+                    self._transform(stream, router, results, ha_conversation_id, chat_log),
                 ):
                     pass
                 mistral_id = self.mistral_conversation_id(ha_conversation_id) or mistral_id
@@ -323,6 +326,7 @@ class MistralTurnRunner:
         router: ToolRouter,
         results: list[Any],
         ha_conversation_id: str | None,
+        chat_log: Any = None,
     ) -> AsyncGenerator[dict[str, Any]]:
         """Map Mistral conversation events onto Home Assistant chat-log deltas.
 
@@ -395,7 +399,7 @@ class MistralTurnRunner:
             elif kind == "conversation.response.done":
                 break
 
-        for delta in self._execute_pending(pending, router, results, started):
+        for delta in self._execute_pending(pending, router, results, started, chat_log):
             started = True
             yield await delta if asyncio.iscoroutine(delta) else delta
 
@@ -419,7 +423,12 @@ class MistralTurnRunner:
         return parsed if isinstance(parsed, dict) else {"raw": str(arguments)}
 
     def _execute_pending(
-        self, pending: dict[int, _PendingCall], router: ToolRouter, results: list[Any], started: bool
+        self,
+        pending: dict[int, _PendingCall],
+        router: ToolRouter,
+        results: list[Any],
+        started: bool,
+        chat_log: Any = None,
     ) -> list[Any]:
         """Build the delta sequence that reports and executes the collected calls."""
         if not pending:
@@ -442,13 +451,26 @@ class MistralTurnRunner:
             }
         )
         for index, call in enumerate(calls):
-            deltas.append(self._run_and_report(call, index, router, results))
+            deltas.append(self._run_and_report(call, index, router, results, chat_log))
         return deltas
 
-    async def _run_and_report(self, call: _PendingCall, index: int, router: ToolRouter, results: list[Any]) -> dict:
+    async def _run_and_report(
+        self,
+        call: _PendingCall,
+        index: int,
+        router: ToolRouter,
+        results: list[Any],
+        chat_log: Any = None,
+    ) -> dict:
         """Execute one call, record its result for the next request and report it to the log."""
         _LOGGER.info(f"[TOOL stream] {call.name}, args: {call.arguments[:200]}")
-        result = await router.async_call(call.name, call.arguments)
+        refusal = guard(
+            call.name,
+            self._safe_args(call.arguments),
+            chat_log,
+            enabled=bool(get_option(self._entry, CONF_CONFIRM_SENSITIVE, DEFAULT_CONFIRM_SENSITIVE)),
+        )
+        result = refusal if refusal is not None else await router.async_call(call.name, call.arguments)
         payload = json.dumps(result, ensure_ascii=False, default=str)
         call_id = call.tool_call_id or f"call_{index}"
         results.append(FunctionResultEntry(tool_call_id=call_id, result=payload))
