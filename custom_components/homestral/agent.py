@@ -47,7 +47,7 @@ from .helpers import get_option
 from .llm_tools import ToolRouter, build_tools
 from .logging_config import get_logger
 from .safety import guard
-from .tools import ALL_TOOLS, HAToolExecutor
+from .tools import ALL_TOOLS, HA_FUNCTION_TOOLS, HAToolExecutor
 
 _LOGGER = get_logger(__name__)
 
@@ -183,11 +183,14 @@ class MistralTurnRunner:
         except Exception:
             self.forget(ha_conversation_id)
             raise
-        _LOGGER.info(f"[CONV] final content: {content[:200]}")
+        _LOGGER.debug(f"[CONV] final content: {content[:200]}")
         return content
 
     async def _start(self, text: str, instructions: str) -> Any:
-        kwargs: dict[str, Any] = dict(inputs=text, instructions=instructions, tools=ALL_TOOLS)
+        # Respect the legacy_tools option — the intent path must not bypass it.
+        legacy = bool(get_option(self._entry, CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS))
+        tools = ALL_TOOLS if legacy else [t for t in ALL_TOOLS if t not in HA_FUNCTION_TOOLS]
+        kwargs: dict[str, Any] = dict(inputs=text, instructions=instructions, tools=tools)
         if get_option(self._entry, CONF_USE_AGENT, False):
             _LOGGER.info("Starting new conversation with agent")
             kwargs["agent_id"] = get_option(self._entry, CONF_AGENT_ID)
@@ -208,7 +211,7 @@ class MistralTurnRunner:
 
             if isinstance(first, ToolExecutionEntry):
                 # Built-in Mistral server-side tool (web_search, code_interpreter, etc.)
-                _LOGGER.info(f"[TOOL built-in] {first.name}, args: {first.arguments}")
+                _LOGGER.debug(f"[TOOL built-in] {first.name}, args: {first.arguments}")
                 for out in response.outputs[1:]:
                     if isinstance(out, MessageOutputEntry):
                         return extract_text(out.content) or NO_ANSWER_MESSAGE
@@ -463,7 +466,7 @@ class MistralTurnRunner:
         chat_log: Any = None,
     ) -> dict:
         """Execute one call, record its result for the next request and report it to the log."""
-        _LOGGER.info(f"[TOOL stream] {call.name}, args: {call.arguments[:200]}")
+        _LOGGER.debug(f"[TOOL stream] {call.name}, args: {call.arguments[:200]}")
         refusal = guard(
             call.name,
             self._safe_args(call.arguments),
@@ -483,15 +486,25 @@ class MistralTurnRunner:
 
     async def _execute_calls(self, calls: list[Any]) -> list[Any]:
         results = []
+        confirm_sensitive = bool(get_option(self._entry, CONF_CONFIRM_SENSITIVE, DEFAULT_CONFIRM_SENSITIVE))
         for call in calls:
             args_str = call.arguments if isinstance(call.arguments, str) else json.dumps(call.arguments)
-            _LOGGER.info(f"[TOOL custom] {call.name}, args: {args_str}")
+            _LOGGER.debug(f"[TOOL custom] {call.name}, args: {args_str[:200]}")
             try:
-                tool_result = await self._tool_executor.execute(call.name, json.loads(args_str or "{}"))
-            except Exception as exc:
-                _LOGGER.error(f"[TOOL error] {call.name}: {exc}")
-                tool_result = json.dumps({"error": str(exc)})
-            _LOGGER.info(f"[TOOL result] {call.name}: {tool_result[:200]}")
+                args = json.loads(args_str or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            # Apply the sensitive-action guard on the intent path too.
+            refusal = guard(call.name, args, chat_log=None, enabled=confirm_sensitive)
+            if refusal is not None:
+                tool_result = json.dumps(refusal, ensure_ascii=False)
+            else:
+                try:
+                    tool_result = await self._tool_executor.execute(call.name, args)
+                except Exception as exc:
+                    _LOGGER.error(f"[TOOL error] {call.name}: {exc}")
+                    tool_result = json.dumps({"error": f"échec de l'outil {call.name}"})
+            _LOGGER.debug(f"[TOOL result] {call.name}: {tool_result[:200]}")
             results.append(FunctionResultEntry(tool_call_id=call.tool_call_id, result=tool_result))
         return results
 

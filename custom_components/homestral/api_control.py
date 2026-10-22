@@ -4,15 +4,53 @@ Module for controlling Home Assistant devices via Mistral API.
 
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+import voluptuous as vol
+from homeassistant.core import HomeAssistant, HomeAssistantError, ServiceCall
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, SERVICE_CONTROL_DEVICE
 from .errors import APIError, ConfigurationError
 from .logging_config import get_logger
+from .safety import guard
 
 _LOGGER = get_logger(__name__)
+
+# Commands accepted by the control_device service, per domain.
+_ALLOWED_COMMANDS = frozenset(
+    {
+        "turn_on",
+        "turn_off",
+        "toggle",
+        "open",
+        "close",
+        "stop",
+        "set_position",
+        "set_temperature",
+        "set_hvac_mode",
+        "play",
+        "pause",
+        "volume_up",
+        "volume_down",
+        "set_volume",
+        "lock",
+        "unlock",
+        "set_speed",
+        "oscillate",
+        "start",
+        "return_to_base",
+        "clean_spot",
+    }
+)
+
+CONTROL_DEVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required("device_id"): cv.string,
+        vol.Required("command"): vol.In(sorted(_ALLOWED_COMMANDS)),
+        vol.Optional("parameters"): dict,
+    }
+)
 
 
 class DeviceController:
@@ -119,7 +157,7 @@ class DeviceController:
     ) -> dict[str, Any]:
         """Control a device with the specified command and parameters."""
         try:
-            _LOGGER.info(f"Controlling device {device_id} with command {command} and parameters {parameters}")
+            _LOGGER.debug(f"Controlling device {device_id} with command {command}")
 
             # Get device info first
             device_info = await self.get_device_info(device_id)
@@ -392,21 +430,38 @@ async def async_setup_api_control(hass: HomeAssistant) -> DeviceController:
     """Set up the API control service."""
     controller = DeviceController(hass)
 
-    async def handle_control_device_service(call):
-        """Handle the control_device service call."""
-        device_id = call.data.get("device_id")
-        command = call.data.get("command")
-        parameters = call.data.get("parameters", {})
+    async def handle_control_device_service(call: ServiceCall) -> None:
+        """Handle the control_device service call — admin-only, guarded."""
+        # Only an authenticated admin user may call this service.
+        context = call.context
+        user = await hass.auth.async_get_user(context.user_id) if context.user_id else None
+        if user is None or not user.is_admin:
+            raise HomeAssistantError("homestral.control_device requires an admin user")
+
+        device_id: str = call.data["device_id"]
+        command: str = call.data["command"]
+        parameters: dict = call.data.get("parameters", {})
+
+        # Apply the sensitive-action guard (lock, alarm, cover).
+        refusal = guard(
+            "control_ha_device",
+            {"entity_id": device_id, "command": command},
+            chat_log=None,
+            enabled=True,
+        )
+        if refusal is not None:
+            raise HomeAssistantError(refusal["error"])
 
         try:
             result = await controller.control_device(device_id, command, parameters)
             _LOGGER.info(f"Successfully controlled device: {result}")
-            return result
         except Exception as e:
             _LOGGER.error(f"Error in control_device service: {e}")
-            raise e
+            raise HomeAssistantError("Failed to control device") from e
 
-    # Register the service
-    hass.services.async_register(DOMAIN, SERVICE_CONTROL_DEVICE, handle_control_device_service)
+    # Register the service with a schema — HA validates call.data against it.
+    hass.services.async_register(
+        DOMAIN, SERVICE_CONTROL_DEVICE, handle_control_device_service, schema=CONTROL_DEVICE_SCHEMA
+    )
 
     return controller

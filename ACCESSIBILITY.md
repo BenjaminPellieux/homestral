@@ -26,7 +26,7 @@ in mind.
 
 ## Supported environments
 
-- **Home Assistant 2025.11+** (Python 3.13) — required for the integration to load.
+- **Home Assistant 2026.2.3+** (Python 3.13) — required for the integration to load.
 - **Assist pipelines** — works with any Assist pipeline (cloud or local STT/TTS can be mixed).
 - **Browsers** — the config flow and options UI work in all browsers supported by Home Assistant.
 - **Languages** — STT: 13 languages (en, fr, zh, hi, es, ar, pt, ru, de, ja, ko, it, nl). TTS: en, fr, es, de, pt, it, nl, hi, ar. UI: en, fr.
@@ -40,8 +40,9 @@ in mind.
 - **Voice-only interaction requires a working microphone.** Users who cannot
   use a microphone can still type in the Assist chat input — the conversation
   agent accepts text.
-- **TTS voice is fixed** to the Voxtral default voice (preset voice IDs are
-  not yet configurable).
+- **TTS voice** is a single configured voice id per entry (or per Assist
+  pipeline); the options flow accepts a raw Voxtral voice id, not a dropdown
+  of the preset voices.
 - **No visual feedback** in the integration itself — feedback is spoken via TTS
   or visible in the Home Assistant UI (entity states, conversation history).
 - **Custom sentences** for the `HomestralQuery` intent are shipped in English

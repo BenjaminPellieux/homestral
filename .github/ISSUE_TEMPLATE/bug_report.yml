@@ -6,6 +6,21 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. Please remove API keys and any personal data from logs before posting.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched the existing issues and discussions for a duplicate report.
+          required: true
+        - label: I have redacted API keys and personal data from everything below.
+          required: true
+  - type: checkboxes
+    id: regression
+    attributes:
+      label: Regression
+      options:
+        - label: This worked in a previous version of HomeStral (please mention which one in "Additional context").
   - type: textarea
     id: description
     attributes:
@@ -17,14 +32,14 @@ body:
     id: homestral-version
     attributes:
       label: HomeStral version
-      placeholder: "0.2.1"
+      placeholder: "0.6.0"
     validations:
       required: true
   - type: input
     id: ha-version
     attributes:
       label: Home Assistant version
-      placeholder: "2025.11.0"
+      placeholder: "2026.2.3"
     validations:
       required: true
   - type: dropdown

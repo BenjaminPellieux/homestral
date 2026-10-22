@@ -228,7 +228,9 @@ async def test_handler_error_when_client_fails():
         response = await handler.async_handle(_make_intent_obj(hass, "allume la lumière"))
 
     assert response.response_type == intent.IntentResponseType.ERROR
-    assert "API Mistral indisponible" in response.speech["plain"]["speech"]
+    # Internal error details are NOT spoken — only a generic message.
+    assert "Désolé, une erreur est survenue" in response.speech["plain"]["speech"]
+    assert "API Mistral indisponible" not in response.speech["plain"]["speech"]
 
 
 @pytest.mark.asyncio

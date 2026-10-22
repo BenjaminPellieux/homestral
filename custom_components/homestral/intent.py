@@ -43,9 +43,9 @@ class HomestralQueryHandler(intent.IntentHandler):
         try:
             _LOGGER.info("[INTENT] HomestralQuery one-shot turn")
             answer = await runtime.runner.async_answer(query, ha_conversation_id=None)
-        except Exception as exc:
+        except Exception:
             _LOGGER.exception("Error while handling HomestralQuery intent")
-            return self._error_response(intent_obj, f"Désolé, une erreur est survenue : {exc}")
+            return self._error_response(intent_obj, "Désolé, une erreur est survenue.")
 
         response = intent_obj.create_response()
         response.response_type = intent.IntentResponseType.QUERY_ANSWER

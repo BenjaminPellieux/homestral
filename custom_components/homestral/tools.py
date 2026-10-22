@@ -12,6 +12,56 @@ from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
 
+# Attributes safe to send to the Mistral API — a whitelist to avoid leaking
+# GPS coordinates, presence state, tokens or internal URLs that some
+# integrations store in entity attributes.
+_SAFE_ATTRIBUTES = frozenset(
+    {
+        "friendly_name",
+        "unit_of_measurement",
+        "device_class",
+        "state_class",
+        "icon",
+        "supported_features",
+        "temperature",
+        "current_temperature",
+        "humidity",
+        "pressure",
+        "brightness",
+        "color_temp",
+        "color_mode",
+        "hvac_modes",
+        "hvac_mode",
+        "min_temp",
+        "max_temp",
+        "target_temp",
+        "fan_modes",
+        "swing_modes",
+        "current_position",
+        "current_volume",
+        "media_title",
+        "media_artist",
+        "media_duration",
+        "is_locked",
+        "battery_level",
+        "attribution",
+        "assumed_state",
+        "supported_color_modes",
+        "effect_list",
+        "speed_list",
+        "percentage",
+        "percentage_step",
+        "preset_modes",
+        "swing_mode",
+        "fan_mode",
+        "mode",
+    }
+)
+
+# Domains whose state reveals location, presence or security posture —
+# never exposed to the model, even via the legacy tools.
+_BLOCKED_DOMAINS = frozenset({"person", "device_tracker", "zone", "camera", "alarm_control_panel", "input_button"})
+
 # ---------------------------------------------------------------------------
 # Built-in Mistral tools (server-side, no client execution needed)
 # ---------------------------------------------------------------------------
@@ -171,7 +221,7 @@ class HAToolExecutor:
                 result = {"error": f"Tool inconnu: {tool_name}"}
         except Exception as exc:
             _LOGGER.error(f"Tool execution error [{tool_name}]: {exc}")
-            result = {"error": str(exc)}
+            result = {"error": f"échec de l'outil {tool_name}"}
 
         return json.dumps(result, ensure_ascii=False, default=str)
 
@@ -179,16 +229,23 @@ class HAToolExecutor:
         state = self.hass.states.get(entity_id)
         if not state:
             return {"error": f"Entité '{entity_id}' introuvable dans Home Assistant"}
+        if state.domain in _BLOCKED_DOMAINS:
+            return {"error": f"Le domaine '{state.domain}' n'est pas accessible à l'assistant"}
         return {
             "entity_id": entity_id,
             "state": state.state,
             "friendly_name": state.attributes.get("friendly_name"),
-            "attributes": dict(state.attributes),
+            "attributes": {k: v for k, v in state.attributes.items() if k in _SAFE_ATTRIBUTES},
             "last_changed": state.last_changed.isoformat() if state.last_changed else None,
         }
 
     def _list_ha_entities(self, domain: str) -> dict:
-        states = self.hass.states.async_all(domain) if domain else self.hass.states.async_all()
+        if not domain:
+            return {
+                "error": "Le paramètre 'domain' est requis (light, switch, climate, cover, media_player, sensor, weather, lock, fan)"
+            }
+        all_states = self.hass.states.async_all(domain)
+        states = [s for s in all_states if s.domain not in _BLOCKED_DOMAINS]
         truncated = len(states) > 30
         result = {
             "entities": [

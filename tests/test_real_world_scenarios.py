@@ -227,7 +227,9 @@ async def test_api_error_event_becomes_a_chat_log_error_and_resets_the_conversat
 
     await _run(entity, chat_log)
 
-    assert "quota exceeded" in chat_log.content[-1].content
+    # Internal error details are NOT leaked to the user — only a generic message.
+    assert "Désolé, une erreur est survenue" in chat_log.content[-1].content
+    assert "quota exceeded" not in chat_log.content[-1].content
     assert entity._runner.mistral_conversation_id(HA_CONVERSATION_ID) is None
 
 

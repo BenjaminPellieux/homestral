@@ -3,3 +3,9 @@ contact_links:
   - name: Questions and discussions
     url: https://github.com/BenjaminPellieux/homestral/discussions
     about: Ask a question or share how you use HomeStral
+  - name: Security vulnerability
+    url: https://github.com/BenjaminPellieux/homestral/security/advisories/new
+    about: Report a security vulnerability privately — never open a public issue
+  - name: Accessibility barrier
+    url: https://github.com/BenjaminPellieux/homestral/issues/new?labels=accessibility&template=bug_report.yml
+    about: Report something that blocks you from using HomeStral

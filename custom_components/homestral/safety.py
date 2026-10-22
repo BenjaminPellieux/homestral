@@ -22,7 +22,7 @@ CONFIRMATION_REQUIRED = (
 )
 # A question mark at the end of the previous answer means Home Assistant kept the
 # microphone open, so the user has had the chance to answer.
-_QUESTION_MARKS = ("?", "？", ";")
+_QUESTION_MARKS = ("?", "？")
 
 
 def _entity_ids(arguments: Any) -> list[str]:

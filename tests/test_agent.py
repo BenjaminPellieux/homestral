@@ -23,8 +23,14 @@ from custom_components.homestral.agent import (
     MistralTurnRunner,
     extract_text,
 )
-from custom_components.homestral.const import CONF_AGENT_ID, CONF_MAX_TOOL_ITERATIONS, CONF_MODEL, CONF_USE_AGENT
-from custom_components.homestral.tools import ALL_TOOLS
+from custom_components.homestral.const import (
+    CONF_AGENT_ID,
+    CONF_LEGACY_TOOLS,
+    CONF_MAX_TOOL_ITERATIONS,
+    CONF_MODEL,
+    CONF_USE_AGENT,
+)
+from custom_components.homestral.tools import ALL_TOOLS, HA_FUNCTION_TOOLS
 
 
 class FakeClock:
@@ -56,7 +62,8 @@ def _ctx():
 
 @pytest.mark.asyncio
 async def test_first_turn_starts_conversation_with_model_tools_and_instructions():
-    runner, client, _ = _make_runner()
+    # legacy_tools=True so the HA FunctionTools are included (secure default is False).
+    runner, client, _ = _make_runner({"api_key": "k", CONF_USE_AGENT: False, CONF_LEGACY_TOOLS: True})
     client.beta.conversations.start_async = AsyncMock(
         return_value=_response("conv_1", MessageOutputEntry(content="Salut"))
     )
@@ -68,6 +75,22 @@ async def test_first_turn_starts_conversation_with_model_tools_and_instructions(
     kwargs = client.beta.conversations.start_async.call_args.kwargs
     assert kwargs == {"inputs": "Bonjour", "instructions": "ctx", "tools": ALL_TOOLS, "model": "mistral-small-latest"}
     assert runner.mistral_conversation_id("ha_1") == "conv_1"
+
+
+@pytest.mark.asyncio
+async def test_legacy_tools_are_excluded_by_default():
+    """Without legacy_tools=True, HA FunctionTools must not be sent to the model."""
+    runner, client, _ = _make_runner()  # default: legacy_tools=False
+    client.beta.conversations.start_async = AsyncMock(
+        return_value=_response("conv_1", MessageOutputEntry(content="ok"))
+    )
+
+    with _ctx():
+        await runner.async_answer("Bonjour")
+
+    tools = client.beta.conversations.start_async.call_args.kwargs["tools"]
+    assert tools == [t for t in ALL_TOOLS if t not in HA_FUNCTION_TOOLS]
+    assert all(t not in HA_FUNCTION_TOOLS for t in tools)
 
 
 @pytest.mark.asyncio
@@ -208,7 +231,8 @@ async def test_executor_exception_is_sent_back_as_error_result():
 
     assert answer == "Désolé."
     results = client.beta.conversations.append_async.call_args.kwargs["inputs"]
-    assert json.loads(results[0].result) == {"error": "boom"}
+    # Internal error details are not leaked to the model — only a generic message.
+    assert json.loads(results[0].result) == {"error": "échec de l'outil get_ha_weather"}
 
 
 @pytest.mark.asyncio

@@ -94,8 +94,11 @@ The following are **out of scope**:
 - **API key validation** at setup time against the Mistral API.
 - **API key never logged** in plaintext (verified by tests in `tests/test_sensor.py`).
 - **Blocking calls run in an executor** — no event-loop blocking, no key exposure in tracebacks.
-- **Minimal GitHub Actions permissions** — all workflows declare `permissions: contents: read` (or `write` only for releases).
-- **Dependabot** — weekly dependency updates for pip and GitHub Actions.
+- **Minimal GitHub Actions permissions** — workflows declare `contents: read`; `security-events: write` only in CodeQL and Scorecard, `id-token: write` only in Scorecard, and `contents: write` only in the release workflow.
+- **Actions pinned to commit SHAs** — no mutable `@vX` tags on third-party actions (CodeQL and Scorecard actions are the documented, reviewed exception while their pinning is finalised).
+- **CodeQL** — Python SAST (`security-extended` queries) on every push/PR and weekly.
+- **OpenSSF Scorecard** — continuous supply-chain security score, results published to Security Advisories.
+- **Dependabot** — weekly dependency updates for pip and GitHub Actions, with PR limits and reviewer assignment.
 - **Ruff linting** and **hassfest** validation in CI.
 - **HACS validation** in CI.
 - **Single config entry** — prevents duplicate-key confusion.

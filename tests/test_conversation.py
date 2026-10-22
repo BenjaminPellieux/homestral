@@ -49,9 +49,10 @@ async def test_async_handle_error():
     await entity.async_handle_error(chat_log, error)
 
     assert len(chat_log.content) == 2  # prompt systeme + message d'erreur
-    assert "Error: Test error" in chat_log.content[-1].content
-    assert "Code: TEST_ERROR" in chat_log.content[-1].content
-    assert "Details: {'key': 'value'}" in chat_log.content[-1].content
+    # Internal error details are NOT leaked to the user — only a generic message.
+    assert "Désolé, une erreur est survenue" in chat_log.content[-1].content
+    assert "Test error" not in chat_log.content[-1].content
+    assert "TEST_ERROR" not in chat_log.content[-1].content
 
 
 def test_supported_languages():
@@ -96,8 +97,9 @@ async def test_handle_message_turns_runner_errors_into_a_chat_log_message():
     ):
         await entity._async_handle_message(make_user_input("Bonjour"), chat_log)
 
-    assert "API down" in chat_log.content[-1].content
-    assert "CONVERSATION_PROCESSING_ERROR" in chat_log.content[-1].content
+    # Internal error details are NOT leaked — only a generic message in the chat log.
+    assert "Désolé, une erreur est survenue" in chat_log.content[-1].content
+    assert "API down" not in chat_log.content[-1].content
 
 
 @pytest.mark.asyncio

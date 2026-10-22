@@ -71,16 +71,12 @@ class MistralConversationEntity(
         await super().async_will_remove_from_hass()
 
     async def async_handle_error(self, chat_log, error):
-        """Handle errors and append error messages to the chat log."""
-        error_message = f"Error: {str(error)}"
-        if hasattr(error, "code"):
-            error_message += f" (Code: {error.code})"
-        if hasattr(error, "details"):
-            error_message += f" Details: {error.details}"
+        """Handle errors and append a generic message to the chat log (details stay in the logs)."""
+        _LOGGER.error("Conversation error: %s", error, exc_info=error)
         chat_log.content.append(
             AssistantContent(
                 agent_id=self._attr_unique_id,
-                content=error_message,
+                content="Désolé, une erreur est survenue. Réessaie dans un instant.",
             )
         )
 

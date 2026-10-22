@@ -9,13 +9,8 @@
 # Integration code — highest sensitivity (handles API keys, controls devices)
 /custom_components/homestral/ @BenjaminPellieux
 
-# Security-sensitive files
-/SECURITY.md @BenjaminPellieux
-/.github/CODEOWNERS @BenjaminPellieux
-/.github/dependabot.yml @BenjaminPellieux
-
-# CI/CD workflows — supply-chain risk
-/.github/workflows/ @BenjaminPellieux
+# Tests — guard the security invariants documented in SECURITY.md
+/tests/ @BenjaminPellieux
 
 # Manifest — defines what HA installs and runs
 /custom_components/homestral/manifest.json @BenjaminPellieux
@@ -23,3 +18,22 @@
 # Requirements — dependency changes affect the runtime
 /requirements.txt @BenjaminPellieux
 /pyproject.toml @BenjaminPellieux
+
+# HACS manifest — defines the minimum Home Assistant version shown to users
+/hacs.json @BenjaminPellieux
+
+# CI/CD workflows — supply-chain risk
+/.github/workflows/ @BenjaminPellieux
+/.github/CODEOWNERS @BenjaminPellieux
+/.github/dependabot.yml @BenjaminPellieux
+/.github/ISSUE_TEMPLATE/ @BenjaminPellieux
+/.github/pull_request_template.md @BenjaminPellieux
+
+# Security-sensitive and public-facing documents
+/SECURITY.md @BenjaminPellieux
+/ACCESSIBILITY.md @BenjaminPellieux
+/CODE_OF_CONDUCT.md @BenjaminPellieux
+/README.md @BenjaminPellieux
+/CHANGELOG.md @BenjaminPellieux
+/DEVELOPMENT.md @BenjaminPellieux
+/docs/ @BenjaminPellieux

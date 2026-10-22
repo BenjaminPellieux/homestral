@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Community standards**: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` (security policy with private vulnerability reporting via GitHub Security Advisories), `ACCESSIBILITY.md` (accessibility commitment and known limitations), and `.github/CODEOWNERS` (maintainer review required on sensitive paths).
+- **Security hardening**: GitHub Actions pinned to commit SHAs across all workflows, a CodeQL workflow (Python SAST with `security-extended` queries, weekly scan), an OpenSSF Scorecard workflow, and a hardened `dependabot.yml` (PR limits, labels, reviewers, grouped updates).
+- **README**: CodeQL, OpenSSF Scorecard and Security badges, a Security section linking to `SECURITY.md`, and an Accessibility section linking to `ACCESSIBILITY.md`.
+
 ## [0.6.0] - 2026-10-22
 
 Phase 4 of the Voxtral 3 plan: polish.

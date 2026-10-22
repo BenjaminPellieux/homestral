@@ -157,7 +157,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
             if mode == STT_MODE_REALTIME:
                 outcome = await self._transcribe_realtime(stream, language, vocabulary)
                 if outcome.text:
-                    _LOGGER.info(f"[STT realtime] ✓ transcribed: {outcome.text!r}")
+                    _LOGGER.debug(f"[STT realtime] transcribed {len(outcome.text)} chars")
                     return stt.SpeechResult(outcome.text, stt.SpeechResultState.SUCCESS)
                 pcm = outcome.pcm
                 if not outcome.stream_exhausted:
@@ -171,14 +171,14 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
 
             text = await self._transcribe_batch(pcm, language, vocabulary)
             if text:
-                _LOGGER.info(f"[STT batch] ✓ transcribed: {text!r}")
+                _LOGGER.debug(f"[STT batch] transcribed {len(text)} chars")
                 return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
 
             if get_option(self._entry, CONF_STT_CHAT_FALLBACK, DEFAULT_STT_CHAT_FALLBACK):
                 _LOGGER.warning("[STT batch] returned empty — falling back to chat audio input")
                 text = await self._transcribe_chat(pcm)
                 if text:
-                    _LOGGER.info(f"[STT chat] ✓ transcribed: {text!r}")
+                    _LOGGER.debug(f"[STT chat] transcribed {len(text)} chars")
                     return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
 
             _LOGGER.warning("[STT] no speech recognised")

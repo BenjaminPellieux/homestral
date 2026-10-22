@@ -216,7 +216,11 @@ Still stuck? [Open an issue](https://github.com/BenjaminPellieux/homestral/issue
 
 ## Security
 
-Found a vulnerability? Please report it privately — see [SECURITY.md](SECURITY.md) for our security policy, supported versions, and how to submit a report. **Do not open a public issue for security vulnerabilities.**
+Found a vulnerability? Please report it privately via [GitHub's private vulnerability reporting](https://github.com/BenjaminPellieux/homestral/security/advisories/new) — see [SECURITY.md](SECURITY.md) for our security policy, supported versions, and disclosure timeline. **Do not open a public issue for security vulnerabilities.**
+
+## Accessibility
+
+HomeStral is a voice-first integration designed to be usable by everyone. See [ACCESSIBILITY.md](ACCESSIBILITY.md) for our commitment, known limitations, and how to report a barrier.
 
 ## Contributing
 

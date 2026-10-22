@@ -2,6 +2,14 @@
 
 - What changed and why?
 
+## Type of change
+
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that changes existing behaviour)
+- [ ] Documentation only
+- [ ] Dependency update
+
 ## Linked issue
 
 - Closes #
@@ -19,6 +27,8 @@
 ## Checklist
 
 - [ ] `ruff check .` and `ruff format --check .` pass
-- [ ] `pytest` passes
+- [ ] `pytest` passes, with new tests added for new behaviour
+- [ ] `hassfest` and HACS validation pass in CI (they validate `manifest.json`, `strings.json` and translations)
 - [ ] `CHANGELOG.md` updated (if user-facing)
 - [ ] Translations updated (`strings.json`, `translations/en.json`, `translations/fr.json`) if the config flow or services changed
+- [ ] I have read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
