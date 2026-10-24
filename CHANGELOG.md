@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security hardening**: GitHub Actions pinned to commit SHAs across all workflows, a CodeQL workflow (Python SAST with `security-extended` queries, weekly scan), an OpenSSF Scorecard workflow, and a hardened `dependabot.yml` (PR limits, labels, reviewers, grouped updates).
 - **README**: CodeQL, OpenSSF Scorecard and Security badges, a Security section linking to `SECURITY.md`, and an Accessibility section linking to `ACCESSIBILITY.md`.
 
+## [0.6.1] - 2026-10-24
+
+First release driven by a real Home Assistant instance rather than unit tests alone.
+
+### Fixed
+
+- **Text-to-speech was unintelligible.** The streamed path asked Voxtral for `pcm` and wrapped the bytes in a 16-bit WAV header. Measured against the live API, `pcm` returns **32-bit floating point** samples, which played as 16-bit integers is full-scale noise; ffmpeg re-encoded them without complaining, so nothing appeared in the log. The integration now asks for `wav`, whose header states the real sample rate and width, emits that header once and strips the one each later sentence carries. Nothing about the audio format is guessed any more, and `scripts/probe_voxtral_tts.py` re-measures it on demand.
+- **Blocking calls inside the event loop.** The Mistral SDK imports its audio sub-package lazily and the websocket builds an SSL context on first use, both of which stalled Home Assistant in the middle of an utterance and raised warnings. They are now warmed up during setup, in an executor.
+
+### Added
+
+- **Calendar events**: a `create_calendar_event` tool, because Home Assistant's own Assist API exposes calendars read-only and the assistant could only reply that it was unable to help. It accepts a start time with a duration or an explicit end, all-day events, a description and a location; it picks the calendar when only one can receive events and explains itself when several or none can. It is offered independently of the legacy tools, and only when a writable calendar exists.
+- **Speech-to-text diagnostics**: every utterance logs its duration, peak and RMS level, flagging a microphone that is too hot or too quiet, and the realtime path now states why it fell back to file transcription instead of doing so silently.
+
 ## [0.6.0] - 2026-10-22
 
 Phase 4 of the Voxtral 3 plan: polish.

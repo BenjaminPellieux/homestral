@@ -22,6 +22,7 @@ HomeStral brings [Mistral AI](https://mistral.ai) to Home Assistant Assist: a co
 ## Features
 
 - **Conversation agent** — Mistral Small 4 by default (the model Mistral runs in its own voice pipeline), with Mistral Large 4 (1M context, multimodal) and Mistral Medium 3.5 also selectable. Each Home Assistant conversation (user, device or satellite) gets its own Mistral conversation.
+- **Calendar** — the assistant can create events ("ajoute un évènement Signature logement le 5 novembre de 14 h à 15 h"), which Home Assistant's own Assist tools cannot do. Needs a writable calendar such as the Local Calendar integration.
 - **Device control by voice** — the model acts through Home Assistant's own Assist tools, so it only touches the entities you exposed to Assist and understands "ici" as the area of the satellite you are speaking to. Answers stream into the conversation as they are generated.
 - **Speech-to-text** — Voxtral 3 realtime transcription: the audio is streamed to Voxtral while you speak, Voxtral's turn detection ends the utterance as soon as you stop (before Home Assistant's silence timeout), and the names of your exposed entities, areas and floors bias the recognition. Falls back to file transcription (Voxtral Mini or Small Transcribe 3) automatically. 13 languages.
 - **Text-to-speech** — Voxtral TTS 3 (`voxtral-mini-tts-3-0`), synthesized sentence by sentence while the answer is still being written so playback starts early, with preset voices per language (Marie for French by default), emotion, speaking pace and expressiveness.
@@ -193,6 +194,22 @@ data:
 | Text-to-speech | `voxtral-mini-tts-3-0` | Voxtral TTS 3, preset voices per language |
 
 Entries created with the former `mistral-large-4` id are mapped to `mistral-large-latest` automatically.
+
+### Audio quality
+
+The integration asks Voxtral for `wav` rather than `pcm` and reads the sample rate and width out of the returned header, so the audio format is never assumed. If a future Voxtral release changes it, re-measure with:
+
+```bash
+MISTRAL_API_KEY=... .venv/bin/python scripts/probe_voxtral_tts.py
+```
+
+For speech recognition, each utterance logs its level:
+
+```
+[STT] input 3.29s peak=100% rms=-8.4 dBFS clipped=5 — too hot, lower the microphone gain
+```
+
+Speech should sit near -20 dBFS. Much hotter clips and the transcription degrades; much quieter and the model works at the noise floor. Browser microphones with automatic gain are the usual culprit.
 
 ## Troubleshooting
 
