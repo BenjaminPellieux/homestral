@@ -114,14 +114,84 @@ def parse_pronunciations(text: str | None) -> dict[str, list[str]]:
     return hints
 
 
-def streaming_wav_header() -> bytes:
+def streaming_wav_header(
+    sample_rate: int = TTS_SAMPLE_RATE,
+    sample_width: int = TTS_SAMPLE_WIDTH,
+    channels: int = TTS_CHANNELS,
+) -> bytes:
     """A WAV header with nframes=0: tells the player the length is unknown (Wyoming pattern)."""
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wav:
-        wav.setnchannels(TTS_CHANNELS)
-        wav.setsampwidth(TTS_SAMPLE_WIDTH)
-        wav.setframerate(TTS_SAMPLE_RATE)
+        wav.setnchannels(channels)
+        wav.setsampwidth(sample_width)
+        wav.setframerate(sample_rate)
     return buf.getvalue()
+
+
+def parse_wav_header(buf: bytes) -> tuple[tuple[int, int, int], int] | None:
+    """Read a RIFF/WAVE header, returning ((rate, width, channels), offset of the samples).
+
+    Returns None while the buffer is still too short to hold the whole header, so a
+    caller streaming the container can simply feed it more bytes. Mistral streams the
+    header with a length of 0xFFFFFFFF, so chunk sizes are never trusted for `RIFF`.
+    """
+    if len(buf) < 12:
+        return None
+    if buf[0:4] != b"RIFF" or buf[8:12] != b"WAVE":
+        raise ValueError("not a RIFF/WAVE stream")
+
+    rate = width = channels = 0
+    pos = 12
+    while pos + 8 <= len(buf):
+        chunk_id = buf[pos : pos + 4]
+        size = int.from_bytes(buf[pos + 4 : pos + 8], "little")
+        body = pos + 8
+        if chunk_id == b"fmt ":
+            if body + 16 > len(buf):
+                return None
+            channels = int.from_bytes(buf[body + 2 : body + 4], "little")
+            rate = int.from_bytes(buf[body + 4 : body + 8], "little")
+            width = int.from_bytes(buf[body + 14 : body + 16], "little") // 8
+        elif chunk_id == b"data":
+            if not (rate and width and channels):
+                raise ValueError("data chunk before fmt chunk")
+            return (rate, width, channels), body
+        # A streamed container may carry 0xFFFFFFFF as a placeholder length.
+        if size in (0, 0xFFFFFFFF):
+            size = 0
+        pos = body + size + (size & 1)
+    return None
+
+
+class WavStreamReader:
+    """Turn a streamed WAV container into bare samples, learning its real format."""
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+        self.params: tuple[int, int, int] | None = None
+        self.malformed = False
+
+    def feed(self, chunk: bytes) -> bytes:
+        """Return the sample bytes contained in this chunk, holding back the header."""
+        if self.params is not None or self.malformed:
+            return chunk
+        self._buffer.extend(chunk)
+        try:
+            parsed = parse_wav_header(self._buffer)
+        except ValueError as exc:
+            # Not a container after all: pass everything through and let the fallback
+            # parameters describe it, rather than dropping the user's answer.
+            _LOGGER.warning(f"[TTS stream] unexpected payload ({exc}), treating it as raw samples")
+            self.malformed = True
+            payload = bytes(self._buffer)
+            self._buffer.clear()
+            return payload
+        if parsed is None:
+            return b""
+        self.params, offset = parsed
+        payload = bytes(self._buffer[offset:])
+        self._buffer.clear()
+        return payload
 
 
 async def async_setup_entry(
@@ -202,20 +272,34 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
     async def _stream_audio(
         self, request: tts.TTSAudioRequest, kwargs: dict[str, Any], tags: str
     ) -> AsyncGenerator[bytes]:
-        """Yield a streaming WAV header then the PCM of each synthesized batch."""
+        """Yield one streaming WAV header then the samples of every synthesized batch.
+
+        Each sentence batch is its own API call and therefore its own container. The
+        header of the first batch states the real format, so it is emitted once and the
+        later containers contribute only their samples.
+        """
         header_sent = False
         first_batch = True
+        params: tuple[int, int, int] | None = None
         try:
             async for text in self._sentence_batches(request.message_gen):
                 # Delivery tags apply from their position to the end of the input: the first
                 # batch carries them so the whole answer is spoken in that style.
                 payload = f"{tags}{text}" if first_batch else text
                 first_batch = False
-                async for chunk in self._synthesize_pcm(payload, kwargs):
-                    if not header_sent:
+                reader = WavStreamReader()
+                async for chunk in self._synthesize_batch(payload, kwargs):
+                    samples = reader.feed(chunk)
+                    if not header_sent and (reader.params or reader.malformed):
+                        params = reader.params or (TTS_SAMPLE_RATE, TTS_SAMPLE_WIDTH, TTS_CHANNELS)
+                        rate, width, channels = params
+                        _LOGGER.info(f"[TTS stream] audio is {rate} Hz, {width * 8}-bit, {channels} ch")
                         header_sent = True
-                        yield streaming_wav_header()
-                    yield chunk
+                        yield streaming_wav_header(rate, width, channels)
+                    if samples:
+                        yield samples
+                if reader.params and params and reader.params != params:
+                    _LOGGER.warning(f"[TTS stream] batch format changed: {reader.params} after {params}")
         except Exception as exc:
             if not header_sent:
                 _LOGGER.error(f"[TTS stream] synthesis failed before any audio: {exc}")
@@ -261,9 +345,10 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
         if batch := take(None):
             yield batch
 
-    async def _synthesize_pcm(self, text: str, kwargs: dict[str, Any]) -> AsyncGenerator[bytes]:
-        """Stream one batch as raw PCM chunks."""
-        _LOGGER.debug(f"[TTS stream] synthesising {len(text)} chars")
+    async def _synthesize_batch(self, text: str, kwargs: dict[str, Any]) -> AsyncGenerator[bytes]:
+        """Stream one batch as the bytes of a WAV container, header included."""
+        _LOGGER.debug(f"[TTS stream] synthesising {len(text)} chars as {TTS_STREAM_FORMAT}")
+        received = 0
         stream = await self._client.audio.speech.complete_async(
             input=text, response_format=TTS_STREAM_FORMAT, stream=True, **kwargs
         )
@@ -271,9 +356,11 @@ class VoxtralTtsProvider(tts.TextToSpeechEntity):
             async for event in events:
                 name = getattr(event, "event", None) or getattr(getattr(event, "data", None), "type", None)
                 if name == "speech.audio.delta":
-                    yield decode_audio(event.data.audio_data)
+                    chunk = decode_audio(event.data.audio_data)
+                    received += len(chunk)
+                    yield chunk
                 elif name == "speech.audio.done":
-                    _LOGGER.debug(f"[TTS stream] batch done, usage={getattr(event.data, 'usage', '?')}")
+                    _LOGGER.debug(f"[TTS stream] batch done, {received} bytes")
                     return
 
     # ------------------------------------------------------------------

@@ -143,9 +143,13 @@ HOME_AUTOMATION_VOCAB = [
 DEFAULT_TTS_MODEL = "voxtral-mini-tts-3-0"
 DEFAULT_TTS_FORMAT = "wav"  # non-streaming path: one request, cacheable by Home Assistant
 DEFAULT_TTS_LANGUAGE = "fr"
-# Streaming path: pcm chunks (time to first audio ~0.8 s against ~3 s for mp3) wrapped in a
-# streaming WAV header. Voxtral TTS 3 always returns 24 kHz, 16-bit, mono.
-TTS_STREAM_FORMAT = "pcm"
+# Streaming path: ask for "wav" rather than "pcm". Measured against the live API on
+# 2026-10-24: `pcm` returns 32-bit FLOAT samples (f32le, 24 kHz mono), which played as
+# 16-bit integers is full-scale noise, and nothing in the API or the SDK declares the
+# encoding. `wav` streams a RIFF header with an unknown length (0xFFFFFFFF) followed by
+# 16-bit PCM, so the stream describes itself and we never have to guess again.
+TTS_STREAM_FORMAT = "wav"
+# Fallback parameters, used only if a streamed container has no readable header.
 TTS_SAMPLE_RATE = 24000
 TTS_SAMPLE_WIDTH = 2
 TTS_CHANNELS = 1
@@ -240,6 +244,11 @@ TTS_SENTENCE_SCHEDULE = [1, 3]
 TOOL_GET_HA_STATE = "get_ha_state"
 TOOL_LIST_HA_ENTITIES = "list_ha_entities"
 TOOL_GET_HA_WEATHER = "get_ha_weather"
+# Home Assistant's own LLM API can read calendars but not write to them, so this tool
+# fills the gap and stays available even when the legacy tools are off.
+TOOL_CREATE_CALENDAR_EVENT = "create_calendar_event"
+# CalendarEntityFeature.CREATE_EVENT; an entity without it rejects calendar.create_event.
+CALENDAR_FEATURE_CREATE_EVENT = 1
 
 # Services
 SERVICE_CONTROL_DEVICE = "control_device"

@@ -15,12 +15,27 @@ SENTENCES_SOURCE_DIR = Path(__file__).parent / "custom_sentences"
 
 
 def create_mistral_client(api_key: str):
-    """Build the Mistral client (blocking importlib.metadata scans — call from an executor)."""
+    """Build the Mistral client and warm everything that blocks (call from an executor).
+
+    The SDK imports its sub-packages lazily, so the very first speech or transcription
+    call would otherwise run ``importlib`` scans and build an SSL context inside the
+    event loop. Home Assistant detects that and warns, and the stall lands in the middle
+    of an utterance. Touching the lazy attributes here moves the cost to setup.
+    """
+    import ssl
+
     try:
         from mistralai import Mistral  # PyPI standard install
     except ImportError:
         from mistralai.client import Mistral  # HA musllinux wheel (namespace package)
-    return Mistral(api_key=api_key)
+
+    client = Mistral(api_key=api_key)
+    # Resolve the lazily imported sub-SDKs (audio.speech, audio.transcriptions, chat).
+    for attribute in ("speech", "transcriptions"):
+        getattr(client.audio, attribute, None)
+    # The websocket session builds a default SSL context, which reads the CA bundle.
+    ssl.create_default_context()
+    return client
 
 
 def get_option(entry: ConfigEntry, key: str, default: Any = None) -> Any:

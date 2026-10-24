@@ -33,9 +33,11 @@ from custom_components.homestral.const import (
 )
 from custom_components.homestral.tts import (
     VoxtralTtsProvider,
+    WavStreamReader,
     decode_audio,
     delivery_tags,
     language_key,
+    parse_wav_header,
     streaming_wav_header,
 )
 
@@ -48,9 +50,26 @@ PCM = b"\x01\x02" * 200
 # ---------------------------------------------------------------------------
 
 
+def wav_container(pcm: bytes, rate: int = TTS_SAMPLE_RATE, width: int = 2, channels: int = 1) -> bytes:
+    """A streaming WAV container shaped like Mistral's: header then samples."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 def _delta(pcm: bytes):
     """One SSE audio chunk, as the SDK exposes it (event name + base64 payload)."""
     return SimpleNamespace(event="speech.audio.delta", data=SimpleNamespace(audio_data=base64.b64encode(pcm).decode()))
+
+
+def _wav_deltas(pcm: bytes = PCM, **fmt):
+    """The deltas of one batch: a complete WAV container split in two."""
+    blob = wav_container(pcm, **fmt)
+    return [_delta(blob[:30]), _delta(blob[30:]), _done()]
 
 
 def _done():
@@ -93,7 +112,7 @@ def _make_provider(options=None, stream_script=None, audio_data=None, side_effec
         if side_effect is not None:
             raise side_effect
         if kwargs.get("stream"):
-            script = stream_script or [[_delta(PCM), _done()]]
+            script = stream_script or [_wav_deltas()]
             events = script[min(len(calls) - 1, len(script) - 1)]
             return FakeStream(events) if not isinstance(events, FakeStream) else events
         payload = audio_data if audio_data is not None else base64.b64encode(WAV_BYTES).decode()
@@ -142,10 +161,11 @@ async def test_stream_emits_one_header_then_pcm_and_uses_voxtral3_defaults():
 
     assert response.extension == DEFAULT_TTS_FORMAT
     _header, body = _split_header(audio)
+    # Every batch contributes only its samples: the containers' own headers are stripped.
     assert body == PCM * len(provider.calls)
     first = provider.calls[0]
     assert first["model"] == DEFAULT_TTS_MODEL
-    assert first["response_format"] == "pcm"
+    assert first["response_format"] == "wav"  # self-describing, see const.TTS_STREAM_FORMAT
     assert first["stream"] is True
     assert first["voice_id"] == TTS_VOICES["fr"][0][0]
 
@@ -371,3 +391,75 @@ def test_delivery_tags(emotion, pace, expected):
 def test_decode_audio_helpers():
     assert decode_audio(base64.b64encode(b"abc").decode()) == b"abc"
     assert decode_audio(b"abc") == b"abc"
+
+
+# ---------------------------------------------------------------------------
+# Streamed WAV containers
+# ---------------------------------------------------------------------------
+
+
+def test_parse_wav_header_reads_the_real_parameters():
+    blob = wav_container(PCM, rate=24000, width=2, channels=1)
+
+    assert parse_wav_header(blob) == ((24000, 2, 1), 44)
+    # A truncated buffer asks for more bytes rather than guessing.
+    assert parse_wav_header(blob[:20]) is None
+    assert parse_wav_header(b"") is None
+
+
+def test_parse_wav_header_accepts_the_streaming_length_placeholder():
+    """Mistral streams RIFF with 0xFFFFFFFF as the length; it must not be read as a size."""
+    blob = bytearray(wav_container(PCM))
+    blob[4:8] = (0xFFFFFFFF).to_bytes(4, "little")
+
+    assert parse_wav_header(bytes(blob)) == ((24000, 2, 1), 44)
+
+
+def test_parse_wav_header_rejects_a_non_container():
+    with pytest.raises(ValueError, match="RIFF"):
+        parse_wav_header(b"\x00\x01" * 40)
+
+
+def test_wav_stream_reader_handles_a_header_split_across_chunks():
+    blob = wav_container(PCM)
+    reader = WavStreamReader()
+
+    out = b"".join(reader.feed(blob[i : i + 7]) for i in range(0, len(blob), 7))
+
+    assert reader.params == (24000, 2, 1)
+    assert out == PCM
+
+
+def test_wav_stream_reader_passes_raw_bytes_through_when_there_is_no_container():
+    reader = WavStreamReader()
+
+    out = reader.feed(PCM)
+
+    assert reader.malformed is True
+    assert out == PCM
+
+
+@pytest.mark.asyncio
+async def test_stream_header_uses_the_format_the_api_declares():
+    """A 48 kHz answer must be announced as 48 kHz, not as the hardcoded default."""
+    provider = _make_provider(stream_script=[_wav_deltas(PCM, rate=48000, width=2, channels=1)])
+
+    audio = await _collect(await provider.async_stream_tts_audio(_request(provider, "Bonjour.")))
+
+    with wave.open(io.BytesIO(audio[:44]), "rb") as w:
+        assert w.getframerate() == 48000
+        assert w.getnframes() == 0  # streaming: the length stays unknown
+    assert audio[44:] == PCM
+
+
+@pytest.mark.asyncio
+async def test_stream_strips_the_header_of_every_later_batch():
+    provider = _make_provider(stream_script=[_wav_deltas(PCM), _wav_deltas(PCM)])
+
+    audio = await _collect(
+        await provider.async_stream_tts_audio(_request(provider, "Une phrase. Puis une deuxième phrase."))
+    )
+
+    _header, body = _split_header(audio)
+    assert body == PCM * 2
+    assert b"RIFF" not in body
