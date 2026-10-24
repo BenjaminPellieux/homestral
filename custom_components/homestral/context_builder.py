@@ -12,6 +12,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import floor_registry as fr
 
 from .const import (
+    CALENDAR_FEATURE_CREATE_EVENT,
     CONF_STT_BIAS_ENTITIES,
     CONF_STT_CUSTOM_VOCABULARY,
     DEFAULT_STT_BIAS_ENTITIES,
@@ -127,6 +128,15 @@ async def async_stt_vocabulary(hass: HomeAssistant, entry: ConfigEntry) -> list[
 # ---------------------------------------------------------------------------
 
 
+def writable_calendar_names(hass: HomeAssistant) -> list[str]:
+    """Friendly names of the calendars that accept new events."""
+    names = []
+    for state in hass.states.async_all("calendar"):
+        if int(state.attributes.get("supported_features") or 0) & CALENDAR_FEATURE_CREATE_EVENT:
+            names.append(state.attributes.get("friendly_name") or state.entity_id)
+    return names
+
+
 async def build_ha_context(hass: HomeAssistant, *, legacy_tools: bool = False) -> str:
     """Build the system instructions injected into every Mistral conversation.
 
@@ -169,6 +179,14 @@ async def build_ha_context(hass: HomeAssistant, *, legacy_tools: bool = False) -
         "ce que tu as fait. Ne dis jamais que tu n'as pas accès à une information si un outil peut y répondre. "
         "Pour les informations extérieures à la maison (météo d'une autre ville, actualités), utilise la recherche web."
     )
+    if calendars := writable_calendar_names(hass):
+        # Without this the model assumes it can only read calendars, because Home
+        # Assistant's own API exposes no way to create an event.
+        lines.append(
+            f"Tu peux créer des évènements dans l'agenda ({', '.join(calendars)}) avec l'outil prévu : "
+            "demande la date, l'heure et la durée si elles manquent, puis confirme ce que tu as enregistré."
+        )
+
     lines.append(
         "Ne termine ta réponse par une question que si tu as vraiment besoin d'une précision pour agir : "
         "le micro reste alors ouvert pour entendre la réponse de l'utilisateur."

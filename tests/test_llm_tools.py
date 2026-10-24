@@ -154,3 +154,40 @@ async def test_router_reports_broken_arguments():
     router = ToolRouter(FakeLLMApi(), HAToolExecutor(MagicMock()), legacy_tools=False)
 
     assert "error" in await router.async_call("HassTurnOn", "{broken")
+
+
+# ---------------------------------------------------------------------------
+# Calendar tool
+# ---------------------------------------------------------------------------
+
+
+def _executor_with_calendars(*entities):
+    """An executor whose hass exposes the given (entity_id, supported_features) calendars."""
+    hass = MagicMock()
+    states = []
+    for entity_id, features in entities:
+        state = MagicMock()
+        state.entity_id = entity_id
+        state.attributes = {"supported_features": features}
+        states.append(state)
+    hass.states.async_all.return_value = states
+    hass.states.get.side_effect = lambda eid: next((s for s in states if s.entity_id == eid), None)
+    return HAToolExecutor(hass)
+
+
+def test_calendar_tool_is_offered_only_when_a_calendar_can_receive_events():
+    writable = _executor_with_calendars(("calendar.perso", 1))
+    read_only = _executor_with_calendars(("calendar.jours_feries", 0))
+
+    assert "create_calendar_event" in _names(build_tools(FakeLLMApi(), legacy_tools=False, executor=writable))
+    assert "create_calendar_event" not in _names(build_tools(FakeLLMApi(), legacy_tools=False, executor=read_only))
+    # Independent of the legacy tools: it fills a gap in Home Assistant's own API.
+    assert "create_calendar_event" in _names(build_tools(FakeLLMApi(), legacy_tools=True, executor=writable))
+
+
+@pytest.mark.asyncio
+async def test_router_sends_the_calendar_tool_to_the_executor_even_without_legacy_tools():
+    executor = _executor_with_calendars(("calendar.perso", 1))
+    router = ToolRouter(FakeLLMApi(), executor, legacy_tools=False)
+
+    assert router.knows("create_calendar_event") is True

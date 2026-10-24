@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import math
 import wave
+from array import array
 from collections.abc import AsyncIterable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -71,6 +73,30 @@ def normalize_language(language: str | None, mode: str) -> str | None:
     return language.replace("_", "-").split("-")[0].lower() or None
 
 
+def describe_level(pcm: bytes, sample_rate: int = STT_SAMPLE_RATE) -> str:
+    """Summarise an utterance's duration and level, to tell a bad mic from a bad model.
+
+    Speech should sit near -20 dBFS RMS. Much hotter means the input is clipping, much
+    quieter means the model is being asked to transcribe near the noise floor; both show
+    up as "the speech recognition is unreliable".
+    """
+    samples = len(pcm) // 2
+    if not samples:
+        return "no audio"
+    values = array("h")
+    values.frombytes(pcm[: samples * 2])
+    peak = max(max(values), -min(values))
+    rms = math.sqrt(sum(v * v for v in values) / samples)
+    clipped = sum(1 for v in values if abs(v) >= 32700)
+    dbfs = 20 * math.log10(rms / 32768) if rms else -99.0
+    note = ""
+    if dbfs > -12:
+        note = " — too hot, lower the microphone gain"
+    elif dbfs < -35:
+        note = " — very quiet, raise the microphone gain"
+    return f"{samples / sample_rate:.2f}s peak={100 * peak / 32768:.0f}% rms={dbfs:.1f} dBFS clipped={clipped}{note}"
+
+
 def pcm_to_wav(pcm: bytes, sample_rate: int = STT_SAMPLE_RATE) -> bytes:
     """Wrap raw PCM 16-bit mono in a WAV container (stdlib only)."""
     buf = io.BytesIO()
@@ -91,6 +117,8 @@ class RealtimeOutcome:
     stream_exhausted: bool = False
     # Cleared when the session is lost: the pump keeps buffering the pipeline audio without sending it.
     forward: bool = True
+    # Why the realtime attempt produced nothing, so the fallback is never silent.
+    reason: str = "empty transcript"
 
 
 async def async_setup_entry(
@@ -158,12 +186,15 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                 outcome = await self._transcribe_realtime(stream, language, vocabulary)
                 if outcome.text:
                     _LOGGER.debug(f"[STT realtime] transcribed {len(outcome.text)} chars")
+                    _LOGGER.debug(f"[STT] input {describe_level(outcome.pcm)}")
                     return stt.SpeechResult(outcome.text, stt.SpeechResultState.SUCCESS)
                 pcm = outcome.pcm
                 if not outcome.stream_exhausted:
                     pcm += await self._drain(stream)
+                _LOGGER.warning(f"[STT realtime] no transcript ({outcome.reason}) — trying file transcription")
             else:
                 pcm = await self._drain(stream)
+            _LOGGER.debug(f"[STT] input {describe_level(pcm)}")
 
             if not pcm:
                 _LOGGER.debug("[STT] empty audio stream, skipping")
@@ -218,8 +249,9 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
             async with asyncio.timeout(REALTIME_TOTAL_TIMEOUT), session:
                 sender = asyncio.create_task(self._pump_audio(stream, session, buffer, outcome))
                 try:
-                    outcome.text = await self._collect_transcript(session, sender)
+                    outcome.text = await self._collect_transcript(session, sender, outcome)
                 except RealtimeSessionError as exc:
+                    outcome.reason = str(exc)
                     # Cancelling the pump would close the pipeline generator and lose the rest of
                     # the utterance: keep draining it into the buffer for the batch fallback.
                     _LOGGER.warning(f"[STT realtime] {exc} — draining the audio for the batch fallback")
@@ -231,6 +263,7 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                     with suppress(BaseException):
                         await sender
         except (RealtimeSessionError, TimeoutError, OSError, ValueError) as exc:
+            outcome.reason = f"{type(exc).__name__}: {exc}"
             _LOGGER.warning(f"[STT realtime] {exc} — falling back to batch transcription")
         outcome.pcm = bytes(buffer)
         return outcome
@@ -253,7 +286,9 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         if outcome.forward:
             await session.end_audio()
 
-    async def _collect_transcript(self, session: RealtimeSession, sender: asyncio.Task) -> str:
+    async def _collect_transcript(
+        self, session: RealtimeSession, sender: asyncio.Task, outcome: RealtimeOutcome
+    ) -> str:
         """Consume server events until transcription.done; end the audio early on turn.end."""
         loop = asyncio.get_running_loop()
         events = session.events().__aiter__()
@@ -275,7 +310,14 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
                 if isinstance(event, TranscriptionStreamTextDelta):
                     parts.append(event.text)
                 elif isinstance(event, TranscriptionStreamDone):
-                    return (event.text or "".join(parts)).strip()
+                    text = (event.text or "".join(parts)).strip()
+                    _LOGGER.debug(
+                        f"[STT realtime] transcription.done after {len(parts)} deltas, "
+                        f"{len(text)} chars, language={getattr(event, 'language', '?')!r}"
+                    )
+                    if not text:
+                        outcome.reason = f"server returned an empty transcript after {len(parts)} deltas"
+                    return text
                 elif isinstance(event, TurnDetectionEndEvent):
                     _LOGGER.debug(f"[STT realtime] turn.end at {event.time_s}s ({event.end_reason})")
                     if not sender.done():

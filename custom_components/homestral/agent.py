@@ -253,7 +253,7 @@ class MistralTurnRunner:
         await self._async_provide_llm_data(chat_log, user_input)
         llm_api = getattr(chat_log, "llm_api", None)
         legacy_tools = bool(get_option(self._entry, CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS))
-        tools = build_tools(llm_api, legacy_tools=legacy_tools)
+        tools = build_tools(llm_api, legacy_tools=legacy_tools, executor=self._tool_executor)
         router = ToolRouter(llm_api, self._tool_executor, legacy_tools=legacy_tools)
 
         mistral_id = self.mistral_conversation_id(ha_conversation_id)

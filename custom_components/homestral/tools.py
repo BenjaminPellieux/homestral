@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 
@@ -8,6 +9,7 @@ except ImportError:
     from mistralai.models import Function, FunctionTool, WebSearchTool
 
 from .api_control import DeviceController
+from .const import CALENDAR_FEATURE_CREATE_EVENT, TOOL_CREATE_CALENDAR_EVENT
 from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
@@ -67,6 +69,46 @@ _BLOCKED_DOMAINS = frozenset({"person", "device_tracker", "zone", "camera", "ala
 # ---------------------------------------------------------------------------
 
 WEB_SEARCH_TOOL = WebSearchTool()
+
+# Home Assistant's Assist API exposes calendars read-only (calendar_get_events), so
+# without this the model can only answer "I cannot add events".
+CALENDAR_TOOL = FunctionTool(
+    function=Function(
+        name=TOOL_CREATE_CALENDAR_EVENT,
+        description=(
+            "Créer un évènement dans un agenda Home Assistant. "
+            "Utilise l'heure locale de la maison. Pour un évènement sur toute la journée, "
+            "donne start_date et end_date au lieu des heures."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "Titre de l'évènement, par exemple 'Signature logement'"},
+                "start_date_time": {
+                    "type": "string",
+                    "description": "Début en heure locale ISO 8601, par exemple 2026-11-05T14:00:00",
+                },
+                "end_date_time": {
+                    "type": "string",
+                    "description": "Fin en heure locale ISO 8601. À défaut, duration_minutes est utilisé.",
+                },
+                "duration_minutes": {
+                    "type": "number",
+                    "description": "Durée en minutes si la fin n'est pas donnée (60 par défaut).",
+                },
+                "start_date": {"type": "string", "description": "Jour de début (AAAA-MM-JJ) pour un évènement entier"},
+                "end_date": {"type": "string", "description": "Jour de fin exclusif (AAAA-MM-JJ)"},
+                "description": {"type": "string", "description": "Détails optionnels"},
+                "location": {"type": "string", "description": "Lieu optionnel"},
+                "entity_id": {
+                    "type": "string",
+                    "description": "Agenda cible, par exemple calendar.personnel. Omets-le s'il n'y en a qu'un.",
+                },
+            },
+            "required": ["summary"],
+        },
+    )
+)
 
 # ---------------------------------------------------------------------------
 # Custom HA FunctionTools (client-side execution via HAToolExecutor)
@@ -210,6 +252,8 @@ class HAToolExecutor:
                 result = self._list_ha_entities(arguments.get("domain", ""))
             elif tool_name == "get_ha_weather":
                 result = self._get_ha_weather()
+            elif tool_name == TOOL_CREATE_CALENDAR_EVENT:
+                result = await self._create_calendar_event(arguments)
             elif tool_name == "control_ha_device":
                 dc = DeviceController(self.hass)
                 result = await dc.control_device(
@@ -266,6 +310,81 @@ class HAToolExecutor:
                 "to see all entities for that domain."
             )
         return result
+
+    # ------------------------------------------------------------------
+    # Calendar
+    # ------------------------------------------------------------------
+
+    def writable_calendars(self) -> list[str]:
+        """Calendars that accept new events (local_calendar, CalDAV…), read-only ones excluded."""
+        return [
+            state.entity_id
+            for state in self.hass.states.async_all("calendar")
+            if int(state.attributes.get("supported_features") or 0) & CALENDAR_FEATURE_CREATE_EVENT
+        ]
+
+    def _resolve_calendar(self, requested: str | None) -> str:
+        """Pick the target calendar, or explain to the model why it cannot."""
+        writable = self.writable_calendars()
+        if requested:
+            if requested not in writable:
+                known = self.hass.states.get(requested)
+                if known is None:
+                    raise ValueError(f"L'agenda {requested} n'existe pas. Agendas disponibles : {writable or 'aucun'}")
+                raise ValueError(f"L'agenda {requested} est en lecture seule, impossible d'y ajouter un évènement.")
+            return requested
+        if not writable:
+            raise ValueError(
+                "Aucun agenda modifiable n'est configuré dans Home Assistant. "
+                "Ajoute l'intégration « Agenda local » pour pouvoir créer des évènements."
+            )
+        if len(writable) > 1:
+            raise ValueError(f"Plusieurs agendas sont disponibles, précise lequel : {writable}")
+        return writable[0]
+
+    @staticmethod
+    def _event_window(arguments: dict) -> dict:
+        """Turn the model's dates into the fields calendar.create_event expects."""
+        if start_date := arguments.get("start_date"):
+            start = datetime.fromisoformat(str(start_date)).date()
+            end_raw = arguments.get("end_date")
+            # An all-day event ends on the following day: the service end date is exclusive.
+            end = datetime.fromisoformat(str(end_raw)).date() if end_raw else start + timedelta(days=1)
+            if end <= start:
+                end = start + timedelta(days=1)
+            return {"start_date": start.isoformat(), "end_date": end.isoformat()}
+
+        start_raw = arguments.get("start_date_time")
+        if not start_raw:
+            raise ValueError("Il manque la date de début (start_date_time ou start_date).")
+        start_dt = datetime.fromisoformat(str(start_raw))
+        if end_raw := arguments.get("end_date_time"):
+            end_dt = datetime.fromisoformat(str(end_raw))
+        else:
+            minutes = float(arguments.get("duration_minutes") or 60)
+            end_dt = start_dt + timedelta(minutes=minutes)
+        if end_dt <= start_dt:
+            raise ValueError("La fin de l'évènement doit être après son début.")
+        return {"start_date_time": start_dt.isoformat(), "end_date_time": end_dt.isoformat()}
+
+    async def _create_calendar_event(self, arguments: dict) -> dict:
+        """Create an event through the calendar.create_event service."""
+        summary = (arguments.get("summary") or "").strip()
+        if not summary:
+            return {"error": "Il manque le titre de l'évènement."}
+        try:
+            entity_id = self._resolve_calendar(arguments.get("entity_id"))
+            data = {"summary": summary, **self._event_window(arguments)}
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+        for key in ("description", "location"):
+            if value := arguments.get(key):
+                data[key] = str(value)
+
+        _LOGGER.info(f"[CALENDAR] creating {summary!r} on {entity_id}: {data}")
+        await self.hass.services.async_call("calendar", "create_event", {"entity_id": entity_id, **data}, blocking=True)
+        return {"success": True, "entity_id": entity_id, **data}
 
     def _get_ha_weather(self) -> dict:
         weather_states = self.hass.states.async_all("weather")

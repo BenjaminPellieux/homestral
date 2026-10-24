@@ -17,8 +17,9 @@ from homeassistant.helpers import llm
 from mistralai.client.models import Function, FunctionTool
 from voluptuous_openapi import convert
 
+from .const import TOOL_CREATE_CALENDAR_EVENT
 from .logging_config import get_logger
-from .tools import HA_FUNCTION_TOOLS, WEB_SEARCH_TOOL, HAToolExecutor
+from .tools import CALENDAR_TOOL, HA_FUNCTION_TOOLS, WEB_SEARCH_TOOL, HAToolExecutor
 
 _LOGGER = get_logger(__name__)
 
@@ -40,7 +41,13 @@ def ha_tool_to_mistral(tool: llm.Tool, custom_serializer: Any = None) -> Functio
     )
 
 
-def build_tools(llm_api: llm.APIInstance | None, *, legacy_tools: bool, web_search: bool = True) -> list[Any]:
+def build_tools(
+    llm_api: llm.APIInstance | None,
+    *,
+    legacy_tools: bool,
+    web_search: bool = True,
+    executor: HAToolExecutor | None = None,
+) -> list[Any]:
     """Assemble the tool list sent to Mistral.
 
     Home Assistant tools come first and win a name collision, since they respect
@@ -60,6 +67,12 @@ def build_tools(llm_api: llm.APIInstance | None, *, legacy_tools: bool, web_sear
 
     if web_search:
         tools.append(WEB_SEARCH_TOOL)
+
+    # Home Assistant's own API can read calendars but not write to them, so this tool is
+    # offered independently of the legacy ones — but only if something can receive an event.
+    if executor is not None and executor.writable_calendars():
+        tools.append(CALENDAR_TOOL)
+        names.add(TOOL_CREATE_CALENDAR_EVENT)
 
     if legacy_tools:
         for tool in HA_FUNCTION_TOOLS:
@@ -98,6 +111,8 @@ class ToolRouter:
     def knows(self, name: str) -> bool:
         if self._llm_api is not None and any(tool.name == name for tool in self._llm_api.tools):
             return True
+        if name == TOOL_CREATE_CALENDAR_EVENT:
+            return True
         return self._legacy_tools and name in LEGACY_TOOL_NAMES
 
     async def async_call(self, name: str, arguments: Any) -> Any:
@@ -114,7 +129,7 @@ class ToolRouter:
                 _LOGGER.error(f"[TOOL ha] {name}: {exc}")
                 return {"error": str(exc)}
 
-        if self._legacy_tools and name in LEGACY_TOOL_NAMES:
+        if name == TOOL_CREATE_CALENDAR_EVENT or (self._legacy_tools and name in LEGACY_TOOL_NAMES):
             try:
                 return json.loads(await self._executor.execute(name, args))
             except Exception as exc:
