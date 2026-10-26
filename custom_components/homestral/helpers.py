@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN
+from .const import DOMAIN, LANGUAGE_ALIASES
 
 SENTENCES_SOURCE_DIR = Path(__file__).parent / "custom_sentences"
 
@@ -36,6 +36,14 @@ def create_mistral_client(api_key: str):
     # The websocket session builds a default SSL context, which reads the CA bundle.
     ssl.create_default_context()
     return client
+
+
+def mistral_language(language: str | None) -> str | None:
+    """HA language tag (``fr-FR``, ``en_GB``, ``nb``) to the ISO 639-1 code Mistral expects, or None."""
+    if not language:
+        return None
+    code = language.replace("_", "-").split("-")[0].lower()
+    return LANGUAGE_ALIASES.get(code, code) or None
 
 
 def get_option(entry: ConfigEntry, key: str, default: Any = None) -> Any:

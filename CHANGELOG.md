@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security hardening**: GitHub Actions pinned to commit SHAs across all workflows, a CodeQL workflow (Python SAST with `security-extended` queries, weekly scan), an OpenSSF Scorecard workflow, and a hardened `dependabot.yml` (PR limits, labels, reviewers, grouped updates).
 - **README**: CodeQL, OpenSSF Scorecard and Security badges, a Security section linking to `SECURITY.md`, and an Accessibility section linking to `ACCESSIBILITY.md`.
 
+### Changed
+
+- **Speech-to-text languages**: 58 instead of Voxtral 2's 13. The list is the one the realtime API enforces (it rejects any other code), and it covers every language Mistral documents for file transcription. A language outside the realtime list goes straight to file transcription. Home Assistant's `nb` (Norwegian Bokmål) and `fil` (Filipino) are sent as `no` and `tl`, because Mistral only accepts two-letter codes.
+- **Text-to-speech languages**: every Voxtral 3 preset voice, checked against `GET /v1/audio/voices`. Adds Catalan, Hungarian, Japanese, Korean, Norwegian, Polish, Romanian, Russian, Turkish, Ukrainian, Vietnamese and Chinese, plus the UK English voices Fred, Hugo and Howard.
+
 ## [0.6.1] - 2026-10-24
 
 First release driven by a real Home Assistant instance rather than unit tests alone.

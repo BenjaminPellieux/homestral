@@ -56,19 +56,18 @@ from .const import (
     TTS_SAMPLE_WIDTH,
     TTS_SENTENCE_SCHEDULE,
     TTS_STREAM_FORMAT,
+    TTS_SUPPORTED_LANGUAGES,
     TTS_VOICES,
 )
-from .helpers import get_option
+from .helpers import get_option, mistral_language
 from .logging_config import get_logger
 
 _LOGGER = get_logger(__name__)
 
 
 def language_key(language: str | None) -> str | None:
-    """Map an HA language tag (``fr-FR``, ``en_GB``) to a TTS_VOICES key, or None if unsupported."""
-    if not language:
-        return None
-    key = language.replace("_", "-").split("-")[0].lower()
+    """Map an HA language tag (``fr-FR``, ``en_GB``, ``nb``) to a TTS_VOICES key, or None if unsupported."""
+    key = mistral_language(language)
     return key if key in TTS_VOICES else None
 
 
@@ -206,7 +205,7 @@ async def async_setup_entry(
 class VoxtralTtsProvider(tts.TextToSpeechEntity):
     """Voxtral TTS 3 provider using the Mistral audio.speech API."""
 
-    _attr_supported_languages = list(TTS_VOICES)
+    _attr_supported_languages = list(TTS_SUPPORTED_LANGUAGES)
     _attr_default_language = DEFAULT_TTS_LANGUAGE
     _attr_supported_options = [tts.ATTR_VOICE, TTS_OPTION_EMOTION, TTS_OPTION_PACE]
 

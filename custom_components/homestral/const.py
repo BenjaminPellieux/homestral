@@ -68,8 +68,30 @@ STT_MODEL_BATCH_SMALL = "voxtral-small-transcribe-3-0"  # /v1/audio/transcriptio
 STT_MODEL_REALTIME = "voxtral-mini-transcribe-realtime-3-0"  # websocket, turn detection
 STT_MODEL_CHAT_FALLBACK = "voxtral-small-latest"  # chat completions with input_audio (last resort)
 DEFAULT_STT_MODEL = STT_MODEL_BATCH_MINI
-# Languages accepted by the STT entity (ISO 639-1); all are in the Voxtral 3 batch and realtime sets.
-STT_SUPPORTED_LANGUAGES = ["en", "fr", "zh", "hi", "es", "ar", "pt", "ru", "de", "ja", "ko", "it", "nl"]
+# Language tags Home Assistant may use that Mistral spells differently. Mistral only takes
+# two-letter ISO 639-1 codes: "fil" is rejected with a 422, and Norwegian is "no" only.
+LANGUAGE_ALIASES = {"nb": "no", "fil": "tl"}
+# Realtime transcription rejects any language outside this list. Taken from the list the
+# realtime API returns for an unsupported code (probed 2026-10-26); the docs say "45".
+STT_REALTIME_LANGUAGES = [
+    "ar", "bg", "bn", "ca", "cs", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fr",
+    "ga", "gu", "hi", "hr", "hu", "id", "is", "it", "ja", "km", "kn", "ko", "lb", "lt", "lv",
+    "mk", "ml", "mr", "ms", "mt", "my", "nl", "no", "or", "pa", "pl", "ps", "pt", "ro", "ru",
+    "sk", "sl", "sr", "sv", "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh",
+]  # fmt: skip
+# File transcription accepts any ISO 639-1 code without complaint, so the API gives no list.
+# These are the languages Mistral benchmarks it on (FLEURS, Voxtral 3 announcement); the
+# docs say "50". Codes outside STT_REALTIME_LANGUAGES go straight to file transcription.
+STT_BATCH_LANGUAGES = [
+    "ar", "bg", "bn", "ca", "cs", "da", "de", "el", "en", "es", "et", "fa", "fi", "fr", "gu",
+    "hi", "hu", "id", "is", "it", "ja", "kn", "ko", "lt", "lv", "mk", "ml", "mr", "ms", "nl",
+    "no", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "te", "th", "tl", "tr", "uk", "vi", "zh",
+]  # fmt: skip
+# Languages accepted by the STT entity: either mode, plus the aliases Home Assistant may use.
+_STT_LANGUAGES = {*STT_REALTIME_LANGUAGES, *STT_BATCH_LANGUAGES}
+STT_SUPPORTED_LANGUAGES = sorted(
+    _STT_LANGUAGES | {alias for alias, code in LANGUAGE_ALIASES.items() if code in _STT_LANGUAGES}
+)
 # Home Assistant hands STT entities PCM 16-bit mono at 16 kHz; this is also the realtime default.
 STT_SAMPLE_RATE = 16000
 
@@ -153,7 +175,9 @@ TTS_STREAM_FORMAT = "wav"
 TTS_SAMPLE_RATE = 24000
 TTS_SAMPLE_WIDTH = 2
 TTS_CHANNELS = 1
-# Voxtral 3 preset voices (https://docs.mistral.ai/studio/audio/text-to-speech/voices).
+# Voxtral 3 preset voices (https://docs.mistral.ai/studio/audio/text-to-speech/voices), checked
+# against GET /v1/audio/voices on 2026-10-26. The speech API takes no language: the voice sets
+# it, so these keys are the TTS languages. The other TTS languages need a cloned voice.
 # language -> [(voice_id, name)]; the first entry is the default voice for that language.
 TTS_VOICES: dict[str, list[tuple[str, str]]] = {
     "fr": [("voice_592", "Marie"), ("voice_3137", "Manon"), ("voice_589", "Lea"), ("voice_3141", "Camille")],
@@ -166,6 +190,9 @@ TTS_VOICES: dict[str, list[tuple[str, str]]] = {
         ("voice_1786", "Sky"),
         ("voice_1788", "David"),
         ("voice_590", "Harriet"),
+        ("voice_591", "Fred"),
+        ("voice_3149", "Hugo"),
+        ("voice_3147", "Howard"),
     ],
     "es": [("voice_483", "Elena")],
     "de": [("voice_481", "Heidi")],
@@ -174,7 +201,23 @@ TTS_VOICES: dict[str, list[tuple[str, str]]] = {
     "nl": [("voice_3145", "Lotte")],
     "ar": [("voice_479", "Maryam")],
     "hi": [("voice_3139", "Ananya"), ("voice_3153", "Himanshu")],
+    "ca": [("voice_3143", "Jordi")],
+    "hu": [("voice_3146", "Olivia")],
+    "ja": [("voice_3133", "Haruto")],
+    "ko": [("voice_3136", "Sung"), ("voice_3135", "Jin")],
+    "no": [("voice_3134", "Lars")],
+    "pl": [("voice_3154", "Leon")],
+    "ro": [("voice_3155", "Irina")],
+    "ru": [("voice_3132", "Tatiana")],
+    "tr": [("voice_3138", "Oran")],
+    "uk": [("voice_3140", "Taras")],
+    "vi": [("voice_3144", "Huong")],
+    "zh": [("voice_3142", "Mei")],
 }
+# Languages accepted by the TTS entity: the voice languages plus the aliases Home Assistant may use.
+TTS_SUPPORTED_LANGUAGES = sorted(
+    {*TTS_VOICES} | {alias for alias, code in LANGUAGE_ALIASES.items() if code in TTS_VOICES}
+)
 
 # Inline delivery tags (https://docs.mistral.ai/studio/audio/text-to-speech/emotion-tags).
 # Written as [emotion=<value>] / [pace=<value>] at the start of the text they apply to.
