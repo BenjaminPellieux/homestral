@@ -15,6 +15,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+# Before voluptuous, as in Home Assistant itself: from 2026.9 importing homeassistant
+# installs probatio's voluptuous shim, and a voluptuous imported earlier is not the shim.
+import homeassistant  # noqa: F401
 import pytest
 import voluptuous as vol
 from homeassistant.helpers import llm
