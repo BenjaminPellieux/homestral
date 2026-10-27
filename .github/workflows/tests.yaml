@@ -15,9 +15,17 @@ jobs:
       matrix:
         include:
           # The floor declared in hacs.json, so the promise is actually tested.
+          # 2026.2.3 is also the last release that runs on Python 3.13.
           - homeassistant: "==2026.2.3"
+            python: "3.13"
             name: minimum
+          # Every Home Assistant from 2026.3.0 on requires Python >= 3.14.2, so
+          # this job needs 3.14 to resolve anything newer than the floor. Pinned
+          # to 3.13 it silently installed 2026.2.3 and tested the same thing as
+          # the job above, which is how the 2026.9 probatio change reached users
+          # unnoticed.
           - homeassistant: ""
+            python: "3.14"
             name: latest
     name: pytest (${{ matrix.name }} Home Assistant)
     steps:
@@ -26,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           cache: pip
       - name: Install dependencies
         run: scripts/setup
