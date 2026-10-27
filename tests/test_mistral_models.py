@@ -17,6 +17,7 @@ import yaml
 from custom_components.homestral import const
 
 MANIFEST_PATH = Path(__file__).parent.parent / "custom_components" / "homestral" / "manifest.json"
+REQUIREMENTS_PATH = Path(__file__).parent.parent / "requirements.txt"
 CUSTOM_SENTENCES_DIR = Path(__file__).parent.parent / "custom_components" / "homestral" / "custom_sentences"
 
 EXPECTED_CHAT_MODELS = {
@@ -80,6 +81,31 @@ def test_manifest_requirements_and_version():
     # The realtime extra brings websockets, sentence-stream splits the streamed answer into
     # sentences; pydub is gone (raw PCM goes straight to the API).
     assert manifest["requirements"] == ["mistralai[realtime]==3.3.0", "sentence-stream>=1.3.0"]
+
+
+def test_manifest_and_requirements_agree_on_the_runtime_pins():
+    """The two files must not drift apart.
+
+    Home Assistant installs what `manifest.json` asks for; `requirements.txt` is
+    what CI and the development venv install. Dependabot only sees the second one,
+    so a bump there alone would have CI testing an SDK that users never receive.
+    """
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    declared = dict(requirement.split("==", 1) for requirement in manifest["requirements"] if "==" in requirement)
+    assert declared, "no pinned runtime requirement found in the manifest"
+
+    pinned = {}
+    for line in REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if "==" in line:
+            name, version = line.split("==", 1)
+            pinned[name.strip()] = version.strip()
+
+    for name, version in declared.items():
+        assert name in pinned, f"{name} is pinned in manifest.json but missing from requirements.txt"
+        assert pinned[name] == version, (
+            f"{name} is {version} in manifest.json but {pinned[name]} in requirements.txt; bump both files together"
+        )
 
 
 def test_tts_delivery_tag_values():
