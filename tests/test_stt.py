@@ -30,12 +30,14 @@ from custom_components.homestral.const import (
     CONF_STT_STREAMING_DELAY_MS,
     CONF_STT_TURN_DETECTION,
     EVENT_STT_EAGER_END,
+    STT_BATCH_LANGUAGES,
     STT_LANGUAGE_AUTO,
     STT_MODE_BATCH,
     STT_MODEL_BATCH_MINI,
     STT_MODEL_BATCH_SMALL,
     STT_MODEL_CHAT_FALLBACK,
     STT_MODEL_REALTIME,
+    STT_REALTIME_LANGUAGES,
     STT_SUPPORTED_LANGUAGES,
 )
 from custom_components.homestral.stt import VoxtralSttProvider, normalize_language, pcm_to_wav
@@ -309,6 +311,29 @@ async def test_batch_mode_skips_realtime_and_honours_small_model(fake_session):
 
 
 @pytest.mark.asyncio
+async def test_language_without_realtime_support_goes_straight_to_batch(fake_session, monkeypatch):
+    monkeypatch.setattr(stt_mod, "STT_REALTIME_LANGUAGES", ["fr"])
+    provider = _make_provider()
+
+    result = await provider.async_process_audio_stream(_metadata("cs-CZ"), _stream(CHUNK))
+
+    assert result.text == "texte batch"
+    assert fake_session.instances == []
+    assert provider._client.audio.transcriptions.complete_async.call_args.kwargs["language"] == "cs"
+
+
+@pytest.mark.asyncio
+async def test_norwegian_bokmal_is_sent_as_no(fake_session):
+    fake_session.script = [_done("Slå på lyset")]
+    provider = _make_provider()
+
+    result = await provider.async_process_audio_stream(_metadata("nb-NO"), _stream(CHUNK))
+
+    assert result.text == "Slå på lyset"
+    assert fake_session.instances[0].kwargs["language"] == "no"
+
+
+@pytest.mark.asyncio
 async def test_language_auto_omits_the_language_everywhere(fake_session):
     fake_session.script = [_error()]
     provider = _make_provider({CONF_STT_LANGUAGE: STT_LANGUAGE_AUTO})
@@ -371,12 +396,27 @@ async def test_empty_stream_returns_error_without_api_calls(fake_session):
         ("fr-FR", "pipeline", "fr"),
         ("en_GB", "pipeline", "en"),
         ("DE", "pipeline", "de"),
+        ("cs-CZ", "pipeline", "cs"),
+        ("nb", "pipeline", "no"),
+        ("fil-PH", "pipeline", "tl"),
+        ("zh-Hans", "pipeline", "zh"),
         (None, "pipeline", None),
         ("fr", "auto", None),
     ],
 )
 def test_normalize_language(language, mode, expected):
     assert normalize_language(language, mode) == expected
+
+
+def test_language_lists():
+    """Every code is ISO 639-1 (Mistral rejects anything else) and both modes are advertised."""
+    assert "cs" in STT_REALTIME_LANGUAGES and "cs" in STT_BATCH_LANGUAGES
+    assert {"nb", "fil"} <= set(STT_SUPPORTED_LANGUAGES)
+    assert set(STT_REALTIME_LANGUAGES) | set(STT_BATCH_LANGUAGES) <= set(STT_SUPPORTED_LANGUAGES)
+    assert all(len(code) == 2 for code in STT_REALTIME_LANGUAGES + STT_BATCH_LANGUAGES)
+    assert {normalize_language(code, "pipeline") for code in STT_SUPPORTED_LANGUAGES} == set(
+        STT_REALTIME_LANGUAGES
+    ) | set(STT_BATCH_LANGUAGES)
 
 
 def test_pcm_to_wav_round_trip():

@@ -44,16 +44,18 @@ from .const import (
     EVENT_STT_EAGER_END,
     STT_BATCH_MODELS,
     STT_LANGUAGE_AUTO,
+    STT_MODE_BATCH,
     STT_MODE_REALTIME,
     STT_MODEL_BATCH_MINI,
     STT_MODEL_CHAT_FALLBACK,
     STT_MODEL_REALTIME,
     STT_REALTIME_BUFFER_MAX_BYTES,
+    STT_REALTIME_LANGUAGES,
     STT_SAMPLE_RATE,
     STT_SUPPORTED_LANGUAGES,
 )
 from .context_builder import async_stt_vocabulary
-from .helpers import get_option
+from .helpers import get_option, mistral_language
 from .logging_config import get_logger
 from .voxtral_realtime import RealtimeSession, RealtimeSessionError, turn_detection_preset
 
@@ -68,9 +70,9 @@ BATCH_TIMEOUT = 30.0
 
 def normalize_language(language: str | None, mode: str) -> str | None:
     """Pipeline language (``fr-FR``, ``en_GB``) to ISO 639-1, or None to let Voxtral detect it."""
-    if mode == STT_LANGUAGE_AUTO or not language:
+    if mode == STT_LANGUAGE_AUTO:
         return None
-    return language.replace("_", "-").split("-")[0].lower() or None
+    return mistral_language(language)
 
 
 def describe_level(pcm: bytes, sample_rate: int = STT_SAMPLE_RATE) -> str:
@@ -178,6 +180,9 @@ class VoxtralSttProvider(stt.SpeechToTextEntity):
         )
         vocabulary = await async_stt_vocabulary(self.hass, self._entry)
         mode = get_option(self._entry, CONF_STT_MODE, DEFAULT_STT_MODE)
+        if mode == STT_MODE_REALTIME and language and language not in STT_REALTIME_LANGUAGES:
+            _LOGGER.debug(f"[STT] realtime does not support {language!r}, using file transcription")
+            mode = STT_MODE_BATCH
         _LOGGER.info(f"[STT] mode={mode} language={language!r} vocabulary={len(vocabulary)} entries")
 
         try:

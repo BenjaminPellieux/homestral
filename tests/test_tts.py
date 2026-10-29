@@ -29,6 +29,7 @@ from custom_components.homestral.const import (
     TTS_OPTION_EMOTION,
     TTS_OPTION_PACE,
     TTS_SAMPLE_RATE,
+    TTS_SUPPORTED_LANGUAGES,
     TTS_VOICES,
 )
 from custom_components.homestral.tts import (
@@ -362,12 +363,33 @@ def test_entity_declares_options_and_languages():
 
     assert provider.supported_options == [tts.ATTR_VOICE, TTS_OPTION_EMOTION, TTS_OPTION_PACE]
     assert provider.default_language == "fr"
-    assert set(provider.supported_languages) == set(TTS_VOICES)
+    assert provider.supported_languages == TTS_SUPPORTED_LANGUAGES
+    assert set(TTS_SUPPORTED_LANGUAGES) == {*TTS_VOICES, "nb"}
+
+
+def test_norwegian_bokmal_uses_the_norwegian_voices():
+    provider = _make_provider()
+
+    voices = provider.async_get_supported_voices("nb-NO")
+
+    assert voices is not None
+    assert [v.voice_id for v in voices] == [voice_id for voice_id, _name in TTS_VOICES["no"]]
 
 
 @pytest.mark.parametrize(
     "language,expected",
-    [("fr", "fr"), ("fr-FR", "fr"), ("en_GB", "en"), ("EN-us", "en"), ("sv", None), (None, None), ("", None)],
+    [
+        ("fr", "fr"),
+        ("fr-FR", "fr"),
+        ("en_GB", "en"),
+        ("EN-us", "en"),
+        ("nb", "no"),
+        ("zh-Hans", "zh"),
+        ("cs", None),
+        ("sv", None),
+        (None, None),
+        ("", None),
+    ],
 )
 def test_language_key(language, expected):
     assert language_key(language) == expected
