@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -10,15 +12,19 @@ from homeassistant.helpers.typing import ConfigType
 from .agent import HomestralRuntime, MistralTurnRunner
 from .api_control import async_setup_api_control
 from .const import (
+    BACKEND_RESPONSES,
     CONF_API_KEY,
+    CONF_CHAT_BACKEND,
     CONF_LEGACY_TOOLS,
     CONF_LLM_HASS_API,
+    DEFAULT_CHAT_BACKEND,
     DEFAULT_LLM_HASS_API,
     DOMAIN,
     PLATFORMS,
 )
-from .helpers import create_mistral_client, install_custom_sentences
+from .helpers import create_mistral_client, get_option, install_custom_sentences
 from .intent import async_setup_intents
+from .responses_backend import ResponsesTurnRunner
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -30,12 +36,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def create_runner(hass: HomeAssistant, entry: ConfigEntry, client: Any) -> Any:
+    """The turn runner for the chat backend this entry selected."""
+    if get_option(entry, CONF_CHAT_BACKEND, DEFAULT_CHAT_BACKEND) == BACKEND_RESPONSES:
+        return ResponsesTurnRunner(hass, entry, client)
+    return MistralTurnRunner(hass, entry, client)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HomeStral from a config entry."""
     # The client constructor does blocking importlib.metadata scans — build it in an executor.
     client = await hass.async_add_executor_job(create_mistral_client, entry.data[CONF_API_KEY])
     # One client and one turn runner shared by the conversation, intent, STT and TTS entities.
-    entry.runtime_data = HomestralRuntime(client=client, runner=MistralTurnRunner(hass, entry, client))
+    # Changing the backend option reloads the entry, which rebuilds the runner.
+    entry.runtime_data = HomestralRuntime(client=client, runner=create_runner(hass, entry, client))
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     installed = await hass.async_add_executor_job(install_custom_sentences, hass.config.path("custom_sentences"))

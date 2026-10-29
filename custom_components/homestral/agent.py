@@ -17,7 +17,7 @@ import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -531,10 +531,20 @@ class MistralTurnRunner:
         return results
 
 
+class TurnRunner(Protocol):
+    """What the conversation entity and the intent need from a chat backend."""
+
+    async def async_answer(self, text: str, *, ha_conversation_id: str | None = None) -> str: ...
+
+    async def async_run_streaming(self, chat_log: Any, user_input: Any) -> None: ...
+
+    def forget(self, ha_conversation_id: str | None) -> None: ...
+
+
 @dataclass
 class HomestralRuntime:
     """What a config entry keeps at runtime (``entry.runtime_data``)."""
 
     client: Any
-    runner: MistralTurnRunner
+    runner: TurnRunner
     cache: dict[str, Any] = field(default_factory=dict)

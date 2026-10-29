@@ -6,6 +6,7 @@
         "title": "Connect to Mistral AI",
         "description": "Enter your Mistral AI API key. Speech-to-text (Voxtral 3) and text-to-speech (Voxtral TTS 3) are set up automatically with the same key.",
         "data": {
+          "chat_backend": "Chat backend",
           "api_key": "Mistral API key",
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
@@ -17,6 +18,7 @@
           "confirm_sensitive_actions": "Confirm sensitive actions"
         },
         "data_description": {
+          "chat_backend": "Experimental: \"responses\" uses Mistral's Responses API (public preview). The whole history is resent on every turn, so the context survives a restart, but Mistral agents and the built-in web search are unavailable.",
           "api_key": "Create a key at console.mistral.ai with access to the Mistral Large and Voxtral models.",
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
@@ -32,7 +34,8 @@
     "error": {
       "invalid_auth": "Invalid API key",
       "cannot_connect": "Failed to connect to Mistral AI",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "agent_requires_conversations": "Mistral agents require the \"conversations\" backend."
     },
     "abort": {
       "single_instance_allowed": "Already configured. Only a single configuration is possible."
@@ -43,6 +46,7 @@
       "init": {
         "title": "HomeStral options",
         "data": {
+          "chat_backend": "Chat backend",
           "use_agent": "Use a Mistral agent",
           "agent_id": "Agent ID",
           "model": "Chat model",
@@ -66,6 +70,7 @@
           "tts_pronunciations": "Custom pronunciations"
         },
         "data_description": {
+          "chat_backend": "Experimental: \"responses\" uses Mistral's Responses API (public preview). The whole history is resent on every turn, so the context survives a restart, but Mistral agents and the built-in web search are unavailable.",
           "use_agent": "Route conversations through a Mistral agent instead of a plain chat model.",
           "agent_id": "Only used when \"Use a Mistral agent\" is enabled.",
           "model": "Mistral chat model used for conversations and voice queries.",
@@ -89,6 +94,9 @@
           "tts_pronunciations": "Teach the voice how to say a name, one \"word=IPA\" per line, for example Pellieux=p ɛ l j ø."
         }
       }
+    },
+    "error": {
+      "agent_requires_conversations": "Mistral agents require the \"conversations\" backend."
     }
   },
   "services": {

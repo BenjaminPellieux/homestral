@@ -91,6 +91,31 @@ def build_tools(
     return tools
 
 
+def to_responses_tools(tools: list[Any]) -> list[dict[str, Any]]:
+    """Convert Conversations-API tools to the flat shape the Responses API expects.
+
+    The Responses API only accepts client-executed function tools, so Mistral's
+    built-in server-side tools (web search) are dropped: the caller is expected to
+    build the list with ``web_search=False``, and anything left is reported once.
+    """
+    converted: list[dict[str, Any]] = []
+    for tool in tools:
+        function = getattr(tool, "function", None)
+        name = getattr(function, "name", None)
+        if not name:
+            _LOGGER.warning(f"[TOOLS] dropping {type(tool).__name__} — the Responses API takes function tools only")
+            continue
+        converted.append(
+            {
+                "type": "function",
+                "name": name,
+                "description": getattr(function, "description", "") or "",
+                "parameters": getattr(function, "parameters", None) or {},
+            }
+        )
+    return converted
+
+
 def parse_arguments(arguments: Any) -> dict[str, Any]:
     """Decode the ``arguments`` field of a function call (a JSON string or a mapping)."""
     if isinstance(arguments, dict):
