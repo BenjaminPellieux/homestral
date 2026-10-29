@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Experimental `chat_backend` option: a turn can now run on Mistral's **Responses API** (public preview) instead of the default Conversations API. The Responses backend is stateless — the history is rebuilt from the Home Assistant chat log and resent on every turn, so the conversation context survives a restart, and the tool list is re-sent with each request. Built-in web search and Mistral agents are unavailable on that backend, and combining it with a Mistral agent is rejected. See [docs/responses-api-analysis.md](docs/responses-api-analysis.md).
+
+### Changed
+
+- The `mistralai` SDK pin moves from 3.3.0 to 3.6.0, which is the release exposing `client.responses`.
+
 ## [0.6.2] - 2026-10-29
 
 ### Added

@@ -68,7 +68,31 @@ class FakeChatLog:
         self.agent_id = agent_id
         async for delta in stream:
             self.deltas.append(delta)
+            self._materialize(delta)
             yield delta
+
+    def _materialize(self, delta: dict[str, Any]) -> None:
+        """Turn a delta into chat-log content, as Home Assistant's chat log does.
+
+        The Responses backend rebuilds its request from this content, so the fake
+        has to grow the log across the iterations of a tool loop.
+        """
+        if delta.get("role") == "assistant":
+            self.content.append(SimpleNamespace(role="assistant", content="", tool_calls=[]))
+        elif delta.get("role") == "tool_result":
+            self.content.append(
+                SimpleNamespace(
+                    role="tool_result",
+                    tool_call_id=delta.get("tool_call_id", ""),
+                    tool_name=delta.get("tool_name", ""),
+                    tool_result=delta.get("tool_result"),
+                )
+            )
+        elif self.content and getattr(self.content[-1], "role", None) == "assistant":
+            if "content" in delta:
+                self.content[-1].content += delta["content"]
+            if "tool_calls" in delta:
+                self.content[-1].tool_calls = list(delta["tool_calls"])
 
     # -- helpers used by the assertions -------------------------------
 
@@ -171,6 +195,63 @@ class FakeEventStream:
     async def __aiter__(self):
         for event in self._events:
             yield event
+
+
+# ---------------------------------------------------------------------------
+# Mistral Responses stream events and output items (experimental backend)
+# ---------------------------------------------------------------------------
+
+
+def resp_text_delta(text: str):
+    return SimpleNamespace(data=SimpleNamespace(type="response.output_text.delta", delta=text))
+
+
+def resp_function_call(name: str, arguments: str, call_id: str = "call_1"):
+    """One ``function_call`` item of a response ``output`` array."""
+    return SimpleNamespace(type="function_call", name=name, arguments=arguments, call_id=call_id)
+
+
+def resp_message(text: str):
+    """One ``message`` item of a response ``output`` array."""
+    return SimpleNamespace(type="message", content=[SimpleNamespace(type="output_text", text=text)])
+
+
+def resp_completed(*output: Any):
+    return SimpleNamespace(
+        data=SimpleNamespace(type="response.completed", response=SimpleNamespace(output=list(output)))
+    )
+
+
+def resp_incomplete(*output: Any):
+    return SimpleNamespace(
+        data=SimpleNamespace(type="response.incomplete", response=SimpleNamespace(output=list(output)))
+    )
+
+
+def resp_failed(message: str = "quota exceeded"):
+    return SimpleNamespace(data=SimpleNamespace(type="response.failed", message=message))
+
+
+def make_responses_client(*scripts: Any):
+    """A Mistral client whose ``responses.create_async`` replays the given scripts.
+
+    A script that is a list drives a streaming call (the events of one response);
+    anything else is returned as the response object of a non-streaming call.
+    """
+    client = MagicMock()
+    calls: list[dict[str, Any]] = []
+    remaining = list(scripts)
+
+    async def _create(**kwargs):
+        calls.append(kwargs)
+        script = remaining.pop(0) if remaining else [resp_text_delta("ok"), resp_completed()]
+        if kwargs.get("stream"):
+            return FakeEventStream(script if isinstance(script, list) else [script])
+        return script
+
+    client.responses.create_async = AsyncMock(side_effect=_create)
+    client.responses_calls = calls
+    return client
 
 
 def make_streaming_client(*scripts: list[Any]):
