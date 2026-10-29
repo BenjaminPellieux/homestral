@@ -15,7 +15,11 @@ from typing import Any
 
 from homeassistant.helpers import llm
 from mistralai.client.models import Function, FunctionTool
-from voluptuous_openapi import convert
+
+try:  # Home Assistant 2026.9 replaced voluptuous and voluptuous-openapi with probatio
+    from probatio import to_openapi as convert
+except ImportError:
+    from voluptuous_openapi import convert
 
 from .const import TOOL_CREATE_CALENDAR_EVENT
 from .logging_config import get_logger
