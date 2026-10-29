@@ -14,6 +14,25 @@ updates:
       include: "scope"
     reviewers:
       - "BenjaminPellieux"
+    groups:
+      # The CodeQL action refuses a workflow whose steps mix major versions, and
+      # dependabot treats every action path as its own dependency, so init,
+      # autobuild, analyze and upload-sarif each got a PR of their own and three
+      # of the four were red. Keeping them in one group is the remedy GitHub's
+      # own error message points to.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
+      # Everything else: routine bumps arrive as a single PR, while a major
+      # version still comes on its own so it gets read before it lands.
+      actions-minor:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "github/codeql-action*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "pip"
     directory: "/"
