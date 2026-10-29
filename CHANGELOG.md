@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-29
+
 ### Added
 
 - **Community standards**: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` (security policy with private vulnerability reporting via GitHub Security Advisories), `ACCESSIBILITY.md` (accessibility commitment and known limitations), and `.github/CODEOWNERS` (maintainer review required on sensitive paths).
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Home Assistant 2026.9 and later**: the integration failed to load with `No module named 'voluptuous_openapi'`. Home Assistant 2026.9 replaced voluptuous and voluptuous-openapi with probatio; tool schemas are now converted with `probatio.to_openapi` when it is available, and with voluptuous-openapi on older releases.
+- **Test matrix**: the "latest Home Assistant" CI job ran on Python 3.13, which every Home Assistant since 2026.3 refuses, so it silently tested 2026.2.3 like the "minimum" job. It now runs on Python 3.14 and tests the current release.
 
 ## [0.6.1] - 2026-10-24
 
