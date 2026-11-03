@@ -8,5 +8,5 @@ sentence-stream>=1.3.0
 audioop-lts; python_version >= "3.13"
 pyyaml
 pytest>=9.1.1
-pytest-asyncio>=1.4.0
+pytest-asyncio>=1.4.1
 ruff
