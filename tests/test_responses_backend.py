@@ -109,13 +109,9 @@ def test_chat_log_to_input_keeps_a_tool_call_without_text():
 def test_chat_log_to_input_serialises_a_non_dict_tool_result():
     """Whatever a tool returned has to survive as JSON."""
     log = FakeChatLog()
-    log.content.append(
-        SimpleNamespace(role="tool_result", tool_call_id="c1", tool_name="t", tool_result=["a", "b"])
-    )
+    log.content.append(SimpleNamespace(role="tool_result", tool_call_id="c1", tool_name="t", tool_result=["a", "b"]))
 
-    assert chat_log_to_input(log) == [
-        {"type": "function_call_output", "call_id": "c1", "output": '["a", "b"]'}
-    ]
+    assert chat_log_to_input(log) == [{"type": "function_call_output", "call_id": "c1", "output": '["a", "b"]'}]
 
 
 def test_chat_log_to_input_of_an_empty_log():
@@ -131,14 +127,18 @@ def test_to_responses_tools_flattens_function_tools():
     """Mistral's nested FunctionTool becomes the flat Responses shape."""
     from custom_components.homestral.llm_tools import ha_tool_to_mistral
 
-    converted = to_responses_tools([ha_tool_to_mistral(FakeTool("HassTurnOn", "Turn on"))])
+    mistral_tool = ha_tool_to_mistral(FakeTool("HassTurnOn", "Turn on"))
+    converted = to_responses_tools([mistral_tool])
 
+    # The parameters schema is serialized by Home Assistant itself (voluptuous-openapi
+    # on the 2026.2 floor, probatio on latest), so assert the mapping, not one
+    # version's serialization.
     assert converted == [
         {
             "type": "function",
             "name": "HassTurnOn",
             "description": "Turn on",
-            "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": []},
+            "parameters": mistral_tool.function.parameters,
         }
     ]
 
@@ -291,9 +291,7 @@ async def test_async_answer_returns_the_text_of_a_one_shot_turn():
     client = make_responses_client(SimpleNamespace(output=[resp_message("Il fait 20 degrés.")]))
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx")
-        )
+        mp.setattr("custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx"))
         answer = await _runner(client).async_answer("Quelle température ?")
 
     assert answer == "Il fait 20 degrés."
@@ -313,9 +311,7 @@ async def test_async_answer_runs_the_tool_loop():
     executor.execute = AsyncMock(return_value=json.dumps({"ok": True}))
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx")
-        )
+        mp.setattr("custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx"))
         answer = await _runner(client, options={CONF_LEGACY_TOOLS: True}, executor=executor).async_answer("Allume")
 
     assert answer == "C'est allumé."
@@ -332,9 +328,7 @@ async def test_async_answer_without_output_falls_back():
     client = make_responses_client(SimpleNamespace(output=[]))
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx")
-        )
+        mp.setattr("custom_components.homestral.responses_backend.build_ha_context", AsyncMock(return_value="ctx"))
         answer = await _runner(client).async_answer("Bonjour")
 
     assert "pas reçu de réponse" in answer
