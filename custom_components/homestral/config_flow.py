@@ -14,8 +14,11 @@ from homeassistant.helpers import llm
 
 from .const import (
     AVAILABLE_CHAT_MODELS,
+    BACKEND_RESPONSES,
+    CHAT_BACKENDS,
     CONF_AGENT_ID,
     CONF_API_KEY,
+    CONF_CHAT_BACKEND,
     CONF_CONFIRM_SENSITIVE,
     CONF_LEGACY_TOOLS,
     CONF_LLM_HASS_API,
@@ -36,6 +39,7 @@ from .const import (
     CONF_TTS_PRONUNCIATIONS,
     CONF_TTS_VOICE,
     CONF_USE_AGENT,
+    DEFAULT_CHAT_BACKEND,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CONFIRM_SENSITIVE,
     DEFAULT_LEGACY_TOOLS,
@@ -86,6 +90,9 @@ class CannotConnect(Exception):
 
 def _chat_options_schema(defaults: Mapping[str, Any], api_ids: list[str] | None = None) -> dict:
     return {
+        vol.Optional(CONF_CHAT_BACKEND, default=defaults.get(CONF_CHAT_BACKEND, DEFAULT_CHAT_BACKEND)): vol.In(
+            CHAT_BACKENDS
+        ),
         vol.Optional(CONF_USE_AGENT, default=defaults.get(CONF_USE_AGENT, False)): bool,
         vol.Optional(CONF_AGENT_ID, default=defaults.get(CONF_AGENT_ID, "")): str,
         # Entries created by earlier releases may hold a model id that is no longer offered.
@@ -175,6 +182,13 @@ def _options_schema(defaults: Mapping[str, Any], api_ids: list[str] | None = Non
 USER_SCHEMA = vol.Schema({vol.Required(CONF_API_KEY): str, **_chat_options_schema({})})
 
 
+def _backend_conflict(user_input: Mapping[str, Any]) -> str | None:
+    """Mistral agents only exist on the Conversations API, so the pair is rejected."""
+    if user_input.get(CONF_CHAT_BACKEND) == BACKEND_RESPONSES and user_input.get(CONF_USE_AGENT):
+        return "agent_requires_conversations"
+    return None
+
+
 def _validate_api_key(api_key: str) -> None:
     """Check the key against the Mistral API (blocking — run in an executor)."""
     client = create_mistral_client(api_key)
@@ -193,7 +207,9 @@ class HomestralConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None:
+        if user_input is not None and (conflict := _backend_conflict(user_input)):
+            errors["base"] = conflict
+        elif user_input is not None:
             api_key = user_input[CONF_API_KEY]
             try:
                 await self.hass.async_add_executor_job(_validate_api_key, api_key)
@@ -220,9 +236,13 @@ class HomestralOptionsFlow(OptionsFlow):
     """Let the user change model, agent, tool-loop and speech-to-text settings after setup."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if conflict := _backend_conflict(user_input):
+                errors["base"] = conflict
+            else:
+                return self.async_create_entry(data=user_input)
 
-        current = {**self.config_entry.data, **self.config_entry.options}
+        current = {**self.config_entry.data, **self.config_entry.options, **(user_input or {})}
         api_ids = [api.id for api in llm.async_get_apis(self.hass)]
-        return self.async_show_form(step_id="init", data_schema=_options_schema(current, api_ids))
+        return self.async_show_form(step_id="init", data_schema=_options_schema(current, api_ids), errors=errors)

@@ -3,9 +3,12 @@
 import pytest
 import voluptuous as vol
 
-from custom_components.homestral.config_flow import USER_SCHEMA, _options_schema
+from custom_components.homestral.config_flow import USER_SCHEMA, _backend_conflict, _options_schema
 from custom_components.homestral.const import (
     AVAILABLE_CHAT_MODELS,
+    BACKEND_CONVERSATIONS,
+    BACKEND_RESPONSES,
+    CONF_CHAT_BACKEND,
     CONF_MODEL,
     CONF_STT_BATCH_MODEL,
     CONF_STT_BIAS_ENTITIES,
@@ -19,6 +22,8 @@ from custom_components.homestral.const import (
     CONF_TTS_DEFAULT_PACE,
     CONF_TTS_EXPRESSIVENESS,
     CONF_TTS_VOICE,
+    CONF_USE_AGENT,
+    DEFAULT_CHAT_BACKEND,
     DEFAULT_CHAT_MODEL,
     DEFAULT_STT_BATCH_MODEL,
     DEFAULT_STT_LANGUAGE,
@@ -33,6 +38,29 @@ def test_user_schema_defaults_to_small_4_and_has_no_stt_fields():
     validated = USER_SCHEMA({"api_key": "k"})
     assert validated[CONF_MODEL] == DEFAULT_CHAT_MODEL
     assert CONF_STT_MODE not in validated
+
+
+def test_user_schema_defaults_to_the_conversations_backend():
+    """The experimental backend is never the default."""
+    assert USER_SCHEMA({"api_key": "k"})[CONF_CHAT_BACKEND] == BACKEND_CONVERSATIONS
+    assert DEFAULT_CHAT_BACKEND == BACKEND_CONVERSATIONS
+
+
+def test_options_schema_keeps_the_selected_backend_and_rejects_unknown_ones():
+    schema = _options_schema({CONF_CHAT_BACKEND: BACKEND_RESPONSES})
+
+    assert schema({})[CONF_CHAT_BACKEND] == BACKEND_RESPONSES
+    with pytest.raises(vol.Invalid):
+        schema({CONF_CHAT_BACKEND: "agents"})
+
+
+def test_backend_conflict_rejects_a_mistral_agent_on_the_responses_backend():
+    """Mistral agents only exist on the Conversations API."""
+    assert _backend_conflict({CONF_CHAT_BACKEND: BACKEND_RESPONSES, CONF_USE_AGENT: True}) == (
+        "agent_requires_conversations"
+    )
+    assert _backend_conflict({CONF_CHAT_BACKEND: BACKEND_RESPONSES, CONF_USE_AGENT: False}) is None
+    assert _backend_conflict({CONF_CHAT_BACKEND: BACKEND_CONVERSATIONS, CONF_USE_AGENT: True}) is None
 
 
 def test_options_schema_maps_legacy_model_id_to_current_alias():

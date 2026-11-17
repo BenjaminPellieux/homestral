@@ -17,7 +17,7 @@ import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -62,22 +62,31 @@ NO_ANSWER_MESSAGE = "Aucune réponse disponible."
 CONVERSATION_TTL = 30 * 60
 
 
+def _chunk_text(chunk: Any) -> str:
+    """Text of one content chunk; "" for non-text chunks (thinking, tool references)."""
+    if isinstance(chunk, dict):
+        chunk_type, text = chunk.get("type"), chunk.get("text")
+    else:
+        chunk_type, text = getattr(chunk, "type", None), getattr(chunk, "text", None)
+    if chunk_type == "text" or (chunk_type is None and text is not None):
+        return str(text)
+    return ""
+
+
 def extract_text(content: Any) -> str:
     """Extract plain text from a Mistral content field.
 
-    Handles str, list[TextChunk], and mixed lists that may contain ToolReference
-    objects (web_search citations). Only TextChunk items (type='text') are kept.
+    Handles str, single chunk objects and lists of chunks. Only text chunks
+    (type='text') are kept: ThinkChunk (type='thinking', streamed reasoning) and
+    ToolReference objects (web_search citations) are dropped, never stringified.
     """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
-        for chunk in content:
-            chunk_type = getattr(chunk, "type", None)
-            if chunk_type == "text" or (chunk_type is None and hasattr(chunk, "text")):
-                parts.append(chunk.text)
-            # ToolReference (type='tool_reference') and other non-text chunks are skipped
-        return "".join(parts)
+        return "".join(_chunk_text(chunk) for chunk in content)
+    if isinstance(content, dict) or getattr(content, "type", None) is not None or hasattr(content, "text"):
+        # Stream delta events deliver one bare chunk per event, not a list.
+        return _chunk_text(content)
     return str(content)
 
 
@@ -88,8 +97,8 @@ class _ConversationRef:
 
 
 @dataclass
-class _PendingCall:
-    """A function call being assembled from one or more ``function.call.delta`` events."""
+class PendingCall:
+    """A function call being assembled from one or more streamed events."""
 
     tool_call_id: str
     name: str
@@ -106,6 +115,77 @@ def event_data(event: Any) -> Any:
     """The payload of a conversation stream event."""
     data = getattr(event, "data", None)
     return data if data is not None else event
+
+
+def safe_args(arguments: Any) -> dict[str, Any]:
+    """Parse streamed tool arguments, never raising on malformed JSON."""
+    try:
+        parsed = json.loads(arguments) if isinstance(arguments, str) and arguments else arguments
+    except ValueError:
+        return {"raw": str(arguments)}
+    return parsed if isinstance(parsed, dict) else {"raw": str(arguments)}
+
+
+def instructions_from_chat_log(chat_log: Any) -> str:
+    """The system prompt Home Assistant assembled (first SystemContent of the log)."""
+    content = getattr(chat_log, "content", None) or []
+    first = content[0] if content else None
+    return getattr(first, "content", "") or ""
+
+
+async def iter_stream(stream: Any) -> AsyncIterable[Any]:
+    """Iterate a stream that may or may not be an async context manager."""
+    if hasattr(stream, "__aenter__"):
+        async with stream as events:
+            async for event in events:
+                yield event
+    else:
+        async for event in stream:
+            yield event
+
+
+async def provide_llm_data(hass: HomeAssistant, entry: ConfigEntry, chat_log: Any, user_input: Any) -> None:
+    """Let Home Assistant build the system prompt and resolve the LLM API."""
+    api_option = get_option(entry, CONF_LLM_HASS_API, DEFAULT_LLM_HASS_API)
+    apis = [api_option] if isinstance(api_option, str) else list(api_option or [])
+    prompt = str(get_option(entry, CONF_PROMPT, DEFAULT_PROMPT) or "").strip()
+    if not prompt:
+        legacy_tools = bool(get_option(entry, CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS))
+        prompt = await build_ha_context(hass, legacy_tools=legacy_tools)
+    await chat_log.async_provide_llm_data(
+        user_input.as_llm_context(DOMAIN),
+        apis or None,
+        prompt,
+        getattr(user_input, "extra_system_prompt", None),
+    )
+
+
+async def run_tool_call(
+    call: PendingCall,
+    index: int,
+    router: ToolRouter,
+    chat_log: Any = None,
+    *,
+    confirm_sensitive: bool = True,
+) -> tuple[str, str, dict[str, Any]]:
+    """Execute one collected call.
+
+    Returns ``(call_id, json_payload, tool_result_delta)``; each backend wraps the
+    payload in its own API type (``FunctionResultEntry`` here, a ``function_call_output``
+    item on the Responses backend).
+    """
+    _LOGGER.debug(f"[TOOL stream] {call.name}, args: {call.arguments[:200]}")
+    refusal = guard(call.name, safe_args(call.arguments), chat_log, enabled=confirm_sensitive)
+    result = refusal if refusal is not None else await router.async_call(call.name, call.arguments)
+    payload = json.dumps(result, ensure_ascii=False, default=str)
+    call_id = call.tool_call_id or f"call_{index}"
+    delta = {
+        "role": "tool_result",
+        "tool_call_id": call_id,
+        "tool_name": call.name,
+        "tool_result": result if isinstance(result, dict) else {"result": result},
+    }
+    return call_id, payload, delta
 
 
 class MistralTurnRunner:
@@ -250,7 +330,7 @@ class MistralTurnRunner:
         the area of the speaking satellite are honoured.
         """
         ha_conversation_id = getattr(user_input, "conversation_id", None)
-        await self._async_provide_llm_data(chat_log, user_input)
+        await provide_llm_data(self.hass, self._entry, chat_log, user_input)
         llm_api = getattr(chat_log, "llm_api", None)
         legacy_tools = bool(get_option(self._entry, CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS))
         tools = build_tools(llm_api, legacy_tools=legacy_tools, executor=self._tool_executor)
@@ -285,24 +365,9 @@ class MistralTurnRunner:
     def _agent_id(self, user_input: Any) -> str:
         return getattr(user_input, "agent_id", None) or self._entry.entry_id
 
-    async def _async_provide_llm_data(self, chat_log: Any, user_input: Any) -> None:
-        """Let Home Assistant build the system prompt and resolve the LLM API."""
-        api_option = get_option(self._entry, CONF_LLM_HASS_API, DEFAULT_LLM_HASS_API)
-        apis = [api_option] if isinstance(api_option, str) else list(api_option or [])
-        prompt = str(get_option(self._entry, CONF_PROMPT, DEFAULT_PROMPT) or "").strip()
-        if not prompt:
-            legacy_tools = bool(get_option(self._entry, CONF_LEGACY_TOOLS, DEFAULT_LEGACY_TOOLS))
-            prompt = await build_ha_context(self.hass, legacy_tools=legacy_tools)
-        await chat_log.async_provide_llm_data(
-            user_input.as_llm_context(DOMAIN),
-            apis or None,
-            prompt,
-            getattr(user_input, "extra_system_prompt", None),
-        )
-
     async def _open_stream(self, inputs: Any, mistral_id: str | None, tools: list[Any], chat_log: Any) -> Any:
         """Start or continue the Mistral conversation in streaming mode."""
-        instructions = self._instructions(chat_log)
+        instructions = instructions_from_chat_log(chat_log)
         if mistral_id is None:
             kwargs: dict[str, Any] = dict(inputs=inputs, instructions=instructions, tools=tools)
             if get_option(self._entry, CONF_USE_AGENT, False):
@@ -315,13 +380,6 @@ class MistralTurnRunner:
             inputs=inputs,
             completion_args={"instructions": instructions},
         )
-
-    @staticmethod
-    def _instructions(chat_log: Any) -> str:
-        """The system prompt Home Assistant assembled (first SystemContent of the log)."""
-        content = getattr(chat_log, "content", None) or []
-        first = content[0] if content else None
-        return getattr(first, "content", "") or ""
 
     async def _transform(
         self,
@@ -337,10 +395,10 @@ class MistralTurnRunner:
         they are accumulated per ``output_index`` and executed once the response is
         done; the results are collected for the next request of the tool loop.
         """
-        pending: dict[int, _PendingCall] = {}
+        pending: dict[int, PendingCall] = {}
         started = False
 
-        async for event in self._iter_stream(stream):
+        async for event in iter_stream(stream):
             kind = event_type(event)
             data = event_data(event)
 
@@ -361,7 +419,7 @@ class MistralTurnRunner:
                 index = getattr(data, "output_index", 0) or 0
                 call = pending.get(index)
                 if call is None:
-                    pending[index] = _PendingCall(
+                    pending[index] = PendingCall(
                         tool_call_id=getattr(data, "tool_call_id", "") or getattr(data, "id", ""),
                         name=getattr(data, "name", "") or "",
                         arguments=getattr(data, "arguments", "") or "",
@@ -383,7 +441,7 @@ class MistralTurnRunner:
                             llm.ToolInput(
                                 id=call_id,
                                 tool_name=name,
-                                tool_args=self._safe_args(getattr(data, "arguments", "")),
+                                tool_args=safe_args(getattr(data, "arguments", "")),
                                 external=True,
                             )
                         ]
@@ -406,28 +464,9 @@ class MistralTurnRunner:
             started = True
             yield await delta if asyncio.iscoroutine(delta) else delta
 
-    @staticmethod
-    async def _iter_stream(stream: Any) -> AsyncIterable[Any]:
-        """Iterate a stream that may or may not be an async context manager."""
-        if hasattr(stream, "__aenter__"):
-            async with stream as events:
-                async for event in events:
-                    yield event
-        else:
-            async for event in stream:
-                yield event
-
-    @staticmethod
-    def _safe_args(arguments: Any) -> dict[str, Any]:
-        try:
-            parsed = json.loads(arguments) if isinstance(arguments, str) and arguments else arguments
-        except ValueError:
-            return {"raw": str(arguments)}
-        return parsed if isinstance(parsed, dict) else {"raw": str(arguments)}
-
     def _execute_pending(
         self,
-        pending: dict[int, _PendingCall],
+        pending: dict[int, PendingCall],
         router: ToolRouter,
         results: list[Any],
         started: bool,
@@ -446,7 +485,7 @@ class MistralTurnRunner:
                     llm.ToolInput(
                         id=call.tool_call_id or f"call_{index}",
                         tool_name=call.name,
-                        tool_args=self._safe_args(call.arguments),
+                        tool_args=safe_args(call.arguments),
                         external=True,
                     )
                     for index, call in enumerate(calls)
@@ -459,30 +498,22 @@ class MistralTurnRunner:
 
     async def _run_and_report(
         self,
-        call: _PendingCall,
+        call: PendingCall,
         index: int,
         router: ToolRouter,
         results: list[Any],
         chat_log: Any = None,
     ) -> dict:
         """Execute one call, record its result for the next request and report it to the log."""
-        _LOGGER.debug(f"[TOOL stream] {call.name}, args: {call.arguments[:200]}")
-        refusal = guard(
-            call.name,
-            self._safe_args(call.arguments),
+        call_id, payload, delta = await run_tool_call(
+            call,
+            index,
+            router,
             chat_log,
-            enabled=bool(get_option(self._entry, CONF_CONFIRM_SENSITIVE, DEFAULT_CONFIRM_SENSITIVE)),
+            confirm_sensitive=bool(get_option(self._entry, CONF_CONFIRM_SENSITIVE, DEFAULT_CONFIRM_SENSITIVE)),
         )
-        result = refusal if refusal is not None else await router.async_call(call.name, call.arguments)
-        payload = json.dumps(result, ensure_ascii=False, default=str)
-        call_id = call.tool_call_id or f"call_{index}"
         results.append(FunctionResultEntry(tool_call_id=call_id, result=payload))
-        return {
-            "role": "tool_result",
-            "tool_call_id": call_id,
-            "tool_name": call.name,
-            "tool_result": result if isinstance(result, dict) else {"result": result},
-        }
+        return delta
 
     async def _execute_calls(self, calls: list[Any]) -> list[Any]:
         results = []
@@ -509,10 +540,20 @@ class MistralTurnRunner:
         return results
 
 
+class TurnRunner(Protocol):
+    """What the conversation entity and the intent need from a chat backend."""
+
+    async def async_answer(self, text: str, *, ha_conversation_id: str | None = None) -> str: ...
+
+    async def async_run_streaming(self, chat_log: Any, user_input: Any) -> None: ...
+
+    def forget(self, ha_conversation_id: str | None) -> None: ...
+
+
 @dataclass
 class HomestralRuntime:
     """What a config entry keeps at runtime (``entry.runtime_data``)."""
 
     client: Any
-    runner: MistralTurnRunner
+    runner: TurnRunner
     cache: dict[str, Any] = field(default_factory=dict)

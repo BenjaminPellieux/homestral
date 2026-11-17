@@ -62,6 +62,19 @@ def resolve_chat_model(model: str | None) -> str:
     return resolved if resolved in AVAILABLE_CHAT_MODELS else DEFAULT_CHAT_MODEL
 
 
+# Chat backend — which Mistral API runs a turn.
+# - conversations: the stateful Conversations API (default). Mistral keeps the thread, and
+#   built-in server-side tools (web search) and Mistral agents are available.
+# - responses: the Responses API (public preview). Stateless: the whole history is resent on
+#   every turn, rebuilt from the Home Assistant chat log, so context survives a restart.
+#   Only client-executed function tools exist there — no web search, no agents.
+CONF_CHAT_BACKEND = "chat_backend"
+BACKEND_CONVERSATIONS = "conversations"
+BACKEND_RESPONSES = "responses"
+CHAT_BACKENDS = [BACKEND_CONVERSATIONS, BACKEND_RESPONSES]
+DEFAULT_CHAT_BACKEND = BACKEND_CONVERSATIONS
+
+
 # STT — Voxtral 3 (https://docs.mistral.ai/studio/audio/migrate-from-voxtral-2)
 STT_MODEL_BATCH_MINI = "voxtral-mini-transcribe-3-0"  # /v1/audio/transcriptions, 4B
 STT_MODEL_BATCH_SMALL = "voxtral-small-transcribe-3-0"  # /v1/audio/transcriptions, higher accuracy

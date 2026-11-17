@@ -66,7 +66,7 @@ Speech-to-text and text-to-speech entities are created automatically with the sa
 
 ### Changing options later
 
-**Settings → Devices & services → HomeStral → Configure** lets you change the model, agent, tool-loop bound and the speech-to-text settings. Changes are applied immediately.
+**Settings → Devices & services → HomeStral → Configure** lets you change the chat backend, model, agent, tool-loop bound and the speech-to-text settings. Changes are applied immediately.
 
 ### Using HomeStral in Assist
 
@@ -132,6 +132,7 @@ The model controls your home through Home Assistant's own Assist tools. Two cons
 
 | Option | Default | Use |
 | --- | --- | --- |
+| Chat backend | conversations | Which Mistral API runs a turn. `responses` is **experimental**, see below. |
 | Home Assistant control | `assist` | Which Home Assistant API the model may act through. Clearing it leaves the model with no way to act (answers only). |
 | Legacy HomeStral tools | off | Also send `control_ha_device`, `get_ha_state` and `list_ha_entities`. They reach entities that are **not** exposed to Assist, so they stay off unless you upgraded from 0.4.0 or earlier, where they were the only way to act. |
 | Custom instructions | empty | Replaces HomeStral's built-in prompt. Empty keeps it (short spoken answers, current time, local weather, tool guidance). |
@@ -140,6 +141,12 @@ The model controls your home through Home Assistant's own Assist tools. Two cons
 Upgrading from an earlier release keeps the legacy tools enabled so nothing stops working; turn them off once you have exposed the entities you want the assistant to reach. The `homestral.control_device` service is unaffected either way.
 
 When the assistant ends its answer with a question, Home Assistant keeps the microphone open so you can reply without repeating the wake word.
+
+### Experimental: the Responses backend
+
+By default a turn runs on Mistral's Conversations API, which keeps the thread on Mistral's side and drops it after 30 minutes idle — or on a Home Assistant restart. Setting **Chat backend** to `responses` runs the turn on the [Responses API](https://docs.mistral.ai/studio/conversations/responses) instead, which stores nothing: the conversation lives in Home Assistant's own chat log and **survives a restart**.
+
+The trade-off is that the whole history travels with every turn (prompt caching keeps the cost down) and that two features do not exist on that API: **built-in web search** and **Mistral agents** — enabling an agent together with this backend is refused. The Responses API is in public preview, so treat the option as experimental; `conversations` remains the supported default. [docs/responses-api-analysis.md](docs/responses-api-analysis.md) records the full comparison.
 
 ## Usage
 

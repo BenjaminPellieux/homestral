@@ -8,8 +8,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.homestral import async_migrate_entry, async_setup_entry
+from custom_components.homestral import async_migrate_entry, async_setup_entry, create_runner
+from custom_components.homestral.agent import MistralTurnRunner
+from custom_components.homestral.const import BACKEND_RESPONSES, CONF_CHAT_BACKEND
 from custom_components.homestral.helpers import create_mistral_client
+from custom_components.homestral.responses_backend import ResponsesTurnRunner
 
 
 def test_create_mistral_client_returns_client():
@@ -143,3 +146,24 @@ async def test_async_migrate_entry_rejects_newer_version():
 
     assert result is False
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+def _backend_entry(options):
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.data = {"api_key": "k"}
+    entry.options = options
+    return entry
+
+
+def test_create_runner_defaults_to_the_conversations_backend():
+    """An entry with no backend option keeps the stateful Conversations runner."""
+    runner = create_runner(MagicMock(), _backend_entry({}), MagicMock())
+
+    assert isinstance(runner, MistralTurnRunner)
+
+
+def test_create_runner_selects_the_responses_backend_when_opted_in():
+    runner = create_runner(MagicMock(), _backend_entry({CONF_CHAT_BACKEND: BACKEND_RESPONSES}), MagicMock())
+
+    assert isinstance(runner, ResponsesTurnRunner)

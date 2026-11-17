@@ -64,6 +64,16 @@ The shared `MistralTurnRunner`, one per config entry (kept in `entry.runtime_dat
 - A tool-calling loop (bounded by the `max_tool_iterations` option) that executes FunctionTool calls through `HAToolExecutor` and appends the results to the conversation; built-in server-side tools (web search) are recognised and their answer returned.
 - The legacy `mistral-large-4` model id is mapped to `mistral-large-latest` (`const.resolve_chat_model`).
 - `async_run_streaming()`, now the path used by the conversation entity: it calls `chat_log.async_provide_llm_data()` to get the Home Assistant LLM API and system prompt, builds the Mistral tool list with `llm_tools.build_tools()`, opens `beta.conversations.start_stream_async` / `append_stream_async`, and maps the events (`conversation.response.started`, `message.output.delta`, `function.call.delta` accumulated per `output_index`, `tool.execution.done`, `conversation.response.error`, `conversation.response.done`) onto chat-log deltas consumed by `chat_log.async_add_delta_content_stream()`. `async_answer()` remains the non-streaming path used by the `HomestralQuery` intent.
+- The pieces both backends share are module-level, not methods: `PendingCall`, `safe_args()`, `instructions_from_chat_log()`, `iter_stream()`, `provide_llm_data()` and `run_tool_call()` (which applies the sensitive-action guard, calls the router and returns `(call_id, json_payload, tool_result_delta)` for the caller to wrap in its own API type). The `TurnRunner` protocol states what the conversation entity and the intent need, and `create_runner()` in `__init__.py` picks the runner for a config entry from the `chat_backend` option.
+
+### `responses_backend.py`
+`ResponsesTurnRunner`, the experimental backend for Mistral's Responses API (public preview, requires SDK 3.6.0). It presents the same interface as `MistralTurnRunner` — `async_answer()`, `async_run_streaming()` and `forget()`, the last a no-op since there is no server-side conversation to drop. Because the API is stateless:
+- `chat_log_to_input()` rebuilds the whole `input` array from the Home Assistant chat log on every request (user messages, assistant text, one `function_call` item per tool call, one `function_call_output` per result; the system prompt is skipped, it travels as `instructions`). Within a turn the chat log already holds the previous iteration's calls and results, so the next request is a re-read of it. Items are plain dicts rather than SDK models, to stay on the wire contract while the preview churns.
+- `llm_tools.to_responses_tools()` flattens Mistral's nested `FunctionTool` into the Responses shape (`{type, name, description, parameters}`) and drops anything that is not a function tool; the streaming path builds the list with `web_search=False` since built-in server-side tools do not exist there.
+- `_transform()` maps `response.output_text.delta`, `response.completed`, `response.incomplete` (warn, keep what arrived), `response.failed` and `error` onto chat-log deltas.
+- Every request sets `prompt_cache_key` to the entry id so the stable prefix is cached server-side, which is what makes resending the history affordable.
+
+`docs/responses-api-analysis.md` records the comparison with the Conversations API and the triggers for revisiting the default.
 
 ### `llm_tools.py`
 The bridge between the Home Assistant LLM API and Mistral function tools. It includes:
@@ -149,6 +159,8 @@ ruff check . && ruff format --check .
 ```
 
 `scripts/setup` installs the requirements of the Home Assistant `conversation`, `tts` and `ffmpeg` components (hassil, home-assistant-intents, mutagen, ha-ffmpeg) because the tests import those components.
+
+The Responses backend is covered by `tests/test_responses_backend.py`, which drives `ResponsesTurnRunner` through the `make_responses_client` fake and the `resp_*` event builders (`resp_text_delta`, `resp_function_call`, `resp_message`, `resp_completed`, `resp_incomplete`, `resp_failed`) defined in `tests/conftest.py`.
 
 ### Smoke test against the real API
 `scripts/smoke_voxtral3.py` exercises the Voxtral 3 stack end to end with your key (a few cents per run): model ids, the TTS payload format, batch and realtime transcription of a synthesized sentence, and the conversation streaming events. It is never run in CI.
