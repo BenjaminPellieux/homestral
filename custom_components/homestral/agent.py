@@ -62,22 +62,31 @@ NO_ANSWER_MESSAGE = "Aucune réponse disponible."
 CONVERSATION_TTL = 30 * 60
 
 
+def _chunk_text(chunk: Any) -> str:
+    """Text of one content chunk; "" for non-text chunks (thinking, tool references)."""
+    if isinstance(chunk, dict):
+        chunk_type, text = chunk.get("type"), chunk.get("text")
+    else:
+        chunk_type, text = getattr(chunk, "type", None), getattr(chunk, "text", None)
+    if chunk_type == "text" or (chunk_type is None and text is not None):
+        return str(text)
+    return ""
+
+
 def extract_text(content: Any) -> str:
     """Extract plain text from a Mistral content field.
 
-    Handles str, list[TextChunk], and mixed lists that may contain ToolReference
-    objects (web_search citations). Only TextChunk items (type='text') are kept.
+    Handles str, single chunk objects and lists of chunks. Only text chunks
+    (type='text') are kept: ThinkChunk (type='thinking', streamed reasoning) and
+    ToolReference objects (web_search citations) are dropped, never stringified.
     """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
-        for chunk in content:
-            chunk_type = getattr(chunk, "type", None)
-            if chunk_type == "text" or (chunk_type is None and hasattr(chunk, "text")):
-                parts.append(chunk.text)
-            # ToolReference (type='tool_reference') and other non-text chunks are skipped
-        return "".join(parts)
+        return "".join(_chunk_text(chunk) for chunk in content)
+    if isinstance(content, dict) or getattr(content, "type", None) is not None or hasattr(content, "text"):
+        # Stream delta events deliver one bare chunk per event, not a list.
+        return _chunk_text(content)
     return str(content)
 
 

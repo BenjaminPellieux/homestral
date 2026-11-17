@@ -10,7 +10,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mistralai.client.models import FunctionCallEntry, FunctionResultEntry, MessageOutputEntry, ToolExecutionEntry
+from mistralai.client.models import (
+    FunctionCallEntry,
+    FunctionResultEntry,
+    MessageOutputEntry,
+    MessageOutputEvent,
+    TextChunk,
+    ThinkChunk,
+    ToolExecutionEntry,
+)
 
 from custom_components.homestral import agent as agent_mod
 from custom_components.homestral.agent import (
@@ -317,3 +325,43 @@ def test_extract_text_handles_str_chunks_and_citations():
     assert extract_text("abc") == "abc"
     assert extract_text([text_chunk, citation, untyped]) == "Il fait beau."
     assert extract_text(42) == "42"
+
+
+def test_extract_text_drops_streamed_thinking_chunks():
+    # Stream delta events deliver one bare chunk per event: a ThinkChunk must be
+    # dropped, not stringified into the answer as "thinking=[TextChunk(...)] ...".
+    thinking = SimpleNamespace(
+        type="thinking",
+        thinking=[SimpleNamespace(type="text", text="L'utilisateur demande la météo.")],
+        signature="sig",
+        closed=True,
+    )
+    text_chunk = SimpleNamespace(type="text", text="Il fait 14 degrés.")
+    assert extract_text(thinking) == ""
+    assert extract_text(text_chunk) == "Il fait 14 degrés."
+    assert extract_text([thinking, text_chunk]) == "Il fait 14 degrés."
+    assert extract_text({"type": "thinking", "thinking": [{"type": "text", "text": "x"}]}) == ""
+
+
+@pytest.mark.asyncio
+async def test_stream_transform_skips_thinking_deltas_and_keeps_text():
+    # A live stream delivers one bare chunk per message.output.delta event; reasoning
+    # arrives as ThinkChunk and must not leak into the chat log as its repr.
+    runner, _, _ = _make_runner()
+    thinking = ThinkChunk(thinking=[TextChunk(text="L'utilisateur demande", type="text")], signature="s", closed=True)
+    events = [
+        SimpleNamespace(data=SimpleNamespace(type="conversation.response.started", conversation_id="conv_9")),
+        SimpleNamespace(data=MessageOutputEvent(id="m1", content=thinking)),
+        SimpleNamespace(data=MessageOutputEvent(id="m2", content=TextChunk(text="C'est ", type="text"))),
+        SimpleNamespace(data=MessageOutputEvent(id="m3", content=TextChunk(text="fait.", type="text"))),
+        SimpleNamespace(data=SimpleNamespace(type="conversation.response.done")),
+    ]
+
+    async def stream():
+        for event in events:
+            yield event
+
+    deltas = [d async for d in runner._transform(stream(), MagicMock(), [], "ha_1", None)]
+    contents = [d["content"] for d in deltas if "content" in d]
+    assert contents == ["C'est ", "fait."]
+    assert all("thinking=" not in str(d) for d in deltas)
