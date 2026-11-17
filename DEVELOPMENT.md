@@ -160,6 +160,8 @@ ruff check . && ruff format --check .
 
 `scripts/setup` installs the requirements of the Home Assistant `conversation`, `tts` and `ffmpeg` components (hassil, home-assistant-intents, mutagen, ha-ffmpeg) because the tests import those components.
 
+The Responses backend is covered by `tests/test_responses_backend.py`, which drives `ResponsesTurnRunner` through the `make_responses_client` fake and the `resp_*` event builders (`resp_text_delta`, `resp_function_call`, `resp_message`, `resp_completed`, `resp_incomplete`, `resp_failed`) defined in `tests/conftest.py`.
+
 ### Smoke test against the real API
 `scripts/smoke_voxtral3.py` exercises the Voxtral 3 stack end to end with your key (a few cents per run): model ids, the TTS payload format, batch and realtime transcription of a synthesized sentence, and the conversation streaming events. It is never run in CI.
 
