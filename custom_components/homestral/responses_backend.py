@@ -61,6 +61,33 @@ def _field(item: Any, name: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
+def _relax_function_call_arguments_events() -> None:
+    """Work around an SDK schema bug on the Responses stream.
+
+    The API sends ``response.function_call_arguments.done`` with only ``arguments``
+    (the tool name lives on the ``function_call`` output item), but mistralai
+    3.6/3.7 mark ``name`` as required on that event, so parsing the stream raises
+    ValidationError in the middle of a turn. Tool calls are collected from the
+    ``response.completed`` output items, so the field is unused here: make it
+    optional before any stream is parsed.
+    """
+    from mistralai.client.models.responsesfunctioncallargumentsdeltaevent import (
+        ResponsesFunctionCallArgumentsDeltaEvent,
+    )
+    from mistralai.client.models.responsesfunctioncallargumentsdoneevent import (
+        ResponsesFunctionCallArgumentsDoneEvent,
+    )
+
+    for event_cls in (ResponsesFunctionCallArgumentsDeltaEvent, ResponsesFunctionCallArgumentsDoneEvent):
+        field = event_cls.model_fields.get("name")
+        if field is not None and field.is_required():
+            field.default = None
+            event_cls.model_rebuild(force=True)
+
+
+_relax_function_call_arguments_events()
+
+
 def response_text(outputs: Any) -> str:
     """Concatenate the text of the message items of a response."""
     parts: list[str] = []

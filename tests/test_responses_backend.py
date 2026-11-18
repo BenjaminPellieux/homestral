@@ -160,6 +160,28 @@ def test_pending_calls_reads_function_call_items():
     assert [(c.tool_call_id, c.name) for c in calls] == [("c7", "HassTurnOn")]
 
 
+def test_function_call_arguments_done_event_tolerates_missing_name():
+    """The live API omits `name` on response.function_call_arguments.done.
+
+    mistralai 3.6/3.7 mark it required, which made stream parsing raise
+    ValidationError mid-turn; responses_backend relaxes the field at import.
+    """
+    from mistralai.client.models.responsesfunctioncallargumentsdoneevent import (
+        ResponsesFunctionCallArgumentsDoneEvent,
+    )
+
+    event = ResponsesFunctionCallArgumentsDoneEvent(
+        type="response.function_call_arguments.done",
+        arguments='{"domain": ["light"]}',
+        item_id="fc_1",
+        output_index=0,
+        sequence_number=3,
+    )
+
+    assert event.name is None
+    assert event.arguments == '{"domain": ["light"]}'
+
+
 # ---------------------------------------------------------------------------
 # Streaming turns
 # ---------------------------------------------------------------------------
