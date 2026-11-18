@@ -1,9 +1,4 @@
 {
-  "integration": {
-    "homestral": {
-      "default": "mdi:robot"
-    }
-  },
   "entity": {
     "conversation": {
       "homestral": {
@@ -25,5 +20,8 @@
         "default": "mdi:volume-high"
       }
     }
+  },
+  "services": {
+    "control_device": "mdi:gesture-tap-button"
   }
 }
