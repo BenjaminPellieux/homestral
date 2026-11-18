@@ -1,0 +1,29 @@
+{
+  "integration": {
+    "homestral": {
+      "default": "mdi:robot"
+    }
+  },
+  "entity": {
+    "conversation": {
+      "homestral": {
+        "default": "mdi:comment-quote-outline"
+      }
+    },
+    "sensor": {
+      "homestral": {
+        "default": "mdi:robot"
+      }
+    },
+    "stt": {
+      "homestral": {
+        "default": "mdi:microphone"
+      }
+    },
+    "tts": {
+      "homestral": {
+        "default": "mdi:volume-high"
+      }
+    }
+  }
+}
