@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-18
+
 ### Added
 
 - Experimental `chat_backend` option: a turn can now run on Mistral's **Responses API** (public preview) instead of the default Conversations API. The Responses backend is stateless — the history is rebuilt from the Home Assistant chat log and resent on every turn, so the conversation context survives a restart, and the tool list is re-sent with each request. Built-in web search and Mistral agents are unavailable on that backend, and combining it with a Mistral agent is rejected. See [docs/responses-api-analysis.md](docs/responses-api-analysis.md).
@@ -14,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The `mistralai` SDK pin moves from 3.3.0 to 3.6.0, which is the release exposing `client.responses`.
+- CI and dev dependencies bumped by Dependabot: pytest 9.2.0, pytest-asyncio 1.4.1.post1, sentence-stream 1.4.0, github/codeql-action v4.39.3 on all four paths, home-assistant/actions/hassfest, softprops/action-gh-release 3.0.4.
+
+### Fixed
+
+- **Streamed reasoning leaked into the answer**: on the Conversations API each `message.output.delta` event delivers one bare content chunk, and a `ThinkChunk` (`type='thinking'`) fell through `extract_text`'s `str()` fallback, so its repr (`thinking=[TextChunk(...)] ...`) was shown and spoken instead of only the final answer. `extract_text` now treats a single chunk like a list and keeps only text chunks.
 
 ## [0.6.2] - 2026-10-29
 
