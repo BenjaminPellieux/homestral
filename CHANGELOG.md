@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-18
+
+### Fixed
+
+- **Integration icon**: added `custom_components/homestral/icons.json` so Home Assistant shows an icon for the integration and its conversation/sensor/stt/tts entities on every supported release. The `brand/` images (icon/logo PNG+SVG, light and dark) were already shipped and are used by Home Assistant 2026.3+; on the 2026.2 floor the UI only reads `icons.json`. Version bumped so HACS delivers the file as an update.
+
 ## [0.7.0] - 2026-11-18
 
 ### Added
