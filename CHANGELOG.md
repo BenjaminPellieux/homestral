@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-18
+
+### Fixed
+
+- **Responses backend crashed on tool calls**: the API sends `response.function_call_arguments.done` without `name`, but mistralai 3.6/3.7 mark the field required, so stream parsing raised a `ValidationError` mid-turn (`CONVERSATION_PROCESSING_ERROR`). The field is made optional at import; tool calls are read from the `response.completed` output items as before.
+
 ## [0.7.1] - 2026-11-18
 
 ### Fixed
