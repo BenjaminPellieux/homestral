@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-11-19
+
+### Fixed
+
+- **Streaming tool loop left the conversation dangling at its bound**: the chat log ended on a tool result (HA error \"Last content in chat log is not an AssistantContent\") and the bound Mistral conversation kept missing function results server-side, so the next turn failed with HTTP 400 \"Cannot append other inputs while function results are still missing\". The conversation is now forgotten (next turn starts fresh) and the turn closes with a spoken \"too many steps\" message.
+
 ## [0.7.2] - 2026-11-18
 
 ### Fixed
