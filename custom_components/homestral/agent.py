@@ -19,6 +19,7 @@ from collections.abc import AsyncGenerator, AsyncIterable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from homeassistant.components.conversation.chat_log import AssistantContent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -361,6 +362,12 @@ class MistralTurnRunner:
             self.forget(ha_conversation_id)
             raise
         _LOGGER.warning("[CONV stream] tool loop bound reached")
+        # The server still expects results for the last batch of calls: drop the bound
+        # conversation so the next turn starts fresh (otherwise the next append fails
+        # with HTTP 400 "function results are still missing"), and close the chat log
+        # with an assistant message, since it currently ends on a tool result.
+        self.forget(ha_conversation_id)
+        chat_log.content.append(AssistantContent(agent_id=self._agent_id(user_input), content=TOO_MANY_STEPS_MESSAGE))
 
     def _agent_id(self, user_input: Any) -> str:
         return getattr(user_input, "agent_id", None) or self._entry.entry_id

@@ -365,3 +365,39 @@ async def test_stream_transform_skips_thinking_deltas_and_keeps_text():
     contents = [d["content"] for d in deltas if "content" in d]
     assert contents == ["C'est ", "fait."]
     assert all("thinking=" not in str(d) for d in deltas)
+
+
+@pytest.mark.asyncio
+async def test_stream_tool_loop_bound_closes_chat_log_and_forgets_conversation():
+    """Hitting the tool-loop bound must not leave a dangling Mistral conversation
+    (the next turn would fail with HTTP 400 "function results still missing")
+    nor a chat log ending on a tool result."""
+    from homeassistant.components.conversation.chat_log import AssistantContent
+
+    runner, client, _ = _make_runner({"api_key": "k", CONF_MAX_TOOL_ITERATIONS: 2})
+    runner._entry.entry_id = "entry_1"
+    runner._remember("ha_1", "conv_1")
+    client.beta.conversations.append_stream_async = AsyncMock(return_value=object())
+
+    async def fake_transform(stream, router, results, ha_conversation_id, chat_log=None):
+        results.append("result")
+        yield {"role": "assistant"}
+
+    runner._transform = fake_transform
+
+    chat_log = MagicMock()
+    chat_log.content = []
+    chat_log.llm_api = None
+
+    chat_log.async_add_delta_content_stream = lambda agent_id, gen: gen
+    user_input = SimpleNamespace(conversation_id="ha_1", text="salut", agent_id=None)
+
+    with (
+        patch.object(agent_mod, "provide_llm_data", new_callable=AsyncMock),
+        patch.object(agent_mod, "build_tools", return_value=[]),
+    ):
+        await runner.async_run_streaming(chat_log, user_input)
+
+    assert runner.mistral_conversation_id("ha_1") is None
+    assert isinstance(chat_log.content[-1], AssistantContent)
+    assert chat_log.content[-1].content == TOO_MANY_STEPS_MESSAGE
